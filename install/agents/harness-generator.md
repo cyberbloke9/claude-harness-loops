@@ -122,6 +122,19 @@ Say instead: "Implemented the accepted contract and logged evidence for Evaluato
 
 You are done for a sprint only when the accepted contract is implemented, evidence is logged in `generator_trace.log`, risks are disclosed, and the Evaluator has enough material on disk to attack the work.
 
+## Pre-Handoff Secrets & Git-Hygiene Checklist
+
+Before handing off to the Evaluator and before any commit, run this hygiene pass:
+
+- **Never commit secrets.** No API keys, tokens, private keys, or `.env` values in tracked files.
+- **`.gitignore` hygiene:** ensure .gitignore covers .env*, db, and uploads artifacts before staging
+  (e.g. `.env*`, `*.db`, `db/`, `uploads/`). Verify with `git status --porcelain` — none should appear.
+- **Scan before commit:** run a secret scan before any commit (e.g. `bash scripts/validate.sh` check (d),
+  or `git secrets`). A hit blocks the commit; remove the secret, never allowlist a real key.
+- **Optional commit-per-passed-sprint:** optional commit-per-passed-sprint — commit + push once a sprint
+  passes the gate, with identity `cyberbloke9 <prithvip40@gmail.com>`, then observe CI green before the
+  next sprint.
+
 ## Your Reply To The Orchestrator
 
 Reply with ONE short status line plus the absolute paths of the files you wrote/changed. Your prose is NOT forwarded to other agents — only the files and logs you wrote to disk are.

@@ -16,6 +16,9 @@
 #                                 files are out of scope).
 #   (e) Capability isolation    — the harness-evaluator agent's `tools:` list
 #                                 (Sprint 002) omits the exact token `Edit`.
+#   (f) Generator hygiene clause — the harness-generator agent file (Sprint 003)
+#                                 has the "Pre-Handoff Secrets & Git-Hygiene
+#                                 Checklist" section AND all four required clauses.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -275,6 +278,91 @@ then
     pass "(e) capability isolation (harness-evaluator tools omit 'Edit')"
 else
     fail "(e) capability isolation — evaluator must omit 'Edit' (see above)"
+fi
+
+# ---------------------------------------------------------------------------
+# (f) Generator hygiene clause (Sprint 003, B8) — locate the harness-generator
+#     agent by frontmatter `name: harness-generator` (empty-match guard: if no
+#     such file, FAIL — not a silent pass), then assert (i) the heading
+#     `## Pre-Handoff Secrets & Git-Hygiene Checklist` is present and (ii) ALL
+#     FOUR required clauses appear in the file (case-insensitive substring):
+#       1. `never commit secrets`
+#       2. `.gitignore` AND `.env` AND (`uploads` OR `db`)
+#       3. `secret scan` AND `before` AND `commit`
+#       4. `commit-per-passed-sprint` AND `optional`
+#     Heading-only is NOT sufficient; each clause is checked independently so a
+#     clause cannot drop silently. Names the offending file and missing item.
+# ---------------------------------------------------------------------------
+if python3 - <<'PY'
+import glob, sys
+
+def parse_frontmatter(path):
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().split("\n")
+    if not lines or lines[0].strip() != "---":
+        return None
+    close = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            close = i
+            break
+    if close is None:
+        return None
+    fm = {}
+    for line in lines[1:close]:
+        if not line.strip() or line[0] in (" ", "\t") or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        fm[key.strip()] = val.strip()
+    return fm
+
+generators = []
+for path in sorted(glob.glob("install/agents/*.md")):
+    fm = parse_frontmatter(path)
+    if fm and fm.get("name") == "harness-generator":
+        generators.append(path)
+
+if not generators:
+    sys.stderr.write("  - no install/agents/*.md has 'name: harness-generator' (empty-match guard)\n")
+    sys.exit(1)
+
+HEADING = "## pre-handoff secrets & git-hygiene checklist"
+
+errors = []
+for path in generators:
+    with open(path, encoding="utf-8") as fh:
+        content = fh.read()
+    low = content.lower()
+
+    if HEADING not in low:
+        errors.append("%s: missing required section heading '## Pre-Handoff Secrets & Git-Hygiene Checklist'" % path)
+        # still report clause gaps below for completeness
+
+    # clause 1
+    if "never commit secrets" not in low:
+        errors.append("%s: missing clause 1 anchor 'never commit secrets'" % path)
+    # clause 2
+    if not (".gitignore" in low and ".env" in low and ("uploads" in low or "db" in low)):
+        errors.append("%s: missing clause 2 anchors ('.gitignore' AND '.env' AND ('uploads' OR 'db'))" % path)
+    # clause 3
+    if not ("secret scan" in low and "before" in low and "commit" in low):
+        errors.append("%s: missing clause 3 anchors ('secret scan' AND 'before' AND 'commit')" % path)
+    # clause 4
+    if not ("commit-per-passed-sprint" in low and "optional" in low):
+        errors.append("%s: missing clause 4 anchors ('commit-per-passed-sprint' AND 'optional')" % path)
+
+if errors:
+    for e in errors:
+        sys.stderr.write("  - %s\n" % e)
+    sys.exit(1)
+
+print("    (%d generator file(s) checked, checklist heading + 4 clauses present)" % len(generators))
+sys.exit(0)
+PY
+then
+    pass "(f) generator hygiene clause (Pre-Handoff Secrets & Git-Hygiene Checklist + 4 clauses)"
+else
+    fail "(f) generator hygiene clause — missing section/clause (see above)"
 fi
 
 # ---------------------------------------------------------------------------

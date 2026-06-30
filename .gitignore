@@ -13,3 +13,7 @@ ruvector.db
 
 # Build / upload artifacts
 uploads/
+agentdb.rvf
+agentdb.rvf.lock
+*.rvf
+*.rvf.lock

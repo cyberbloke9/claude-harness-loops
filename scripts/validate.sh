@@ -110,6 +110,35 @@
 #                                       ephemeral, cache_read_input_tokens.
 #                                 docs/ is outside check (a)'s globs, so (l) is isolated:
 #                                 it cannot affect (a)-(k) and they cannot mask it.
+#   (m) operating_loop.md + README.md describe the four B17 mechanisms (Sprint 011,
+#                                 B17) — the gate phase, resume path, model tiering, and
+#                                 structured verdict header are described in the two
+#                                 design-source docs, not only inside SKILL.md. A NEW
+#                                 check letter (NOT a (c)/(k)/(l) sub-assertion: (c) is
+#                                 SKILL_MAIN-only and globs no docs; (k) is patterns.md;
+#                                 (l) is token-economy.md). Deterministic, NO network, NO
+#                                 install.sh run. Hard-codes the EXACT file set
+#                                 {docs/operating_loop.md, README.md} (NOT a glob) so a
+#                                 delete/rename FAILs, not passes vacuously. grep -Eqi for
+#                                 headings/word anchors; grep -Fq (fixed-string,
+#                                 case-sensitive) for the literal VERDICT / EVALUATE_SYSTEM /
+#                                 STATUS.md / CONTRACT_REVIEW tokens so `_`/`.`/case match
+#                                 exactly. For EACH file ALL sub-assertions must hold:
+#                                 (m.0) the file exists (load-bearing guard, named on FAIL);
+#                                 (m.1) >=1 title heading `^#{1,6} `;
+#                                 (m.2) Acceptance-Gate anchors: `acceptance gate` (-Eqi)
+#                                       AND literal `EVALUATE_SYSTEM` (-Fq);
+#                                 (m.3) resume anchors: `resum` (-Eqi) AND literal
+#                                       `STATUS.md` (-Fq);
+#                                 (m.4) model-tiering anchors: `tier` (-Eqi) AND literal
+#                                       `CONTRACT_REVIEW` (-Fq);
+#                                 (m.5) verdict-header anchors: literal `VERDICT` (-Fq, the
+#                                       B9/R6 back-compat token) AND `header|first.line`
+#                                       (-Eqi). (m) PASSes only if BOTH files satisfy ALL
+#                                 anchors; each failure names the specific file + missing
+#                                 item. docs/ and README.md are outside (a)'s and (c)'s
+#                                 scope, so (m) is isolated: it cannot affect (a)-(l) and
+#                                 they cannot mask it.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -1064,6 +1093,71 @@ else
     else
         fail "(l) token-economy.md — see above"
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# (m) operating_loop.md + README.md describe the four B17 mechanisms (Sprint 011,
+#     B17). Hard-codes the EXACT file set (NOT a glob) so a delete/rename FAILs, not
+#     passes vacuously. For EACH file, ALL of m.0-m.5 must hold; each failure names
+#     the specific file + missing item. grep -Eqi for headings/word anchors;
+#     grep -Fq (fixed-string, case-sensitive) for the literal VERDICT /
+#     EVALUATE_SYSTEM / STATUS.md / CONTRACT_REVIEW tokens. (m) PASSes only if BOTH
+#     files satisfy ALL anchors.
+# ---------------------------------------------------------------------------
+m_ok=1
+for doc in docs/operating_loop.md README.md; do
+    # (m.0) presence — the load-bearing guard.
+    if [ ! -f "$doc" ]; then
+        echo "  - (m.0) required B17 doc is MISSING: $doc"
+        m_ok=0
+        continue
+    fi
+    # (m.1) >=1 title heading.
+    if ! grep -Eq '^#{1,6} ' "$doc"; then
+        echo "  - $doc: (m.1) no Markdown title heading (expected >=1 line matching '^#{1,6} ')"
+        m_ok=0
+    fi
+    # (m.2) Acceptance-Gate anchors.
+    if ! grep -Eqi 'acceptance gate' "$doc"; then
+        echo "  - $doc: (m.2) missing Acceptance-Gate anchor 'acceptance gate'"
+        m_ok=0
+    fi
+    if ! grep -Fq 'EVALUATE_SYSTEM' "$doc"; then
+        echo "  - $doc: (m.2) missing literal Acceptance-Gate mode token 'EVALUATE_SYSTEM'"
+        m_ok=0
+    fi
+    # (m.3) resume anchors.
+    if ! grep -Eqi 'resum' "$doc"; then
+        echo "  - $doc: (m.3) missing resume anchor 'resum' (resume/resumes/resuming)"
+        m_ok=0
+    fi
+    if ! grep -Fq 'STATUS.md' "$doc"; then
+        echo "  - $doc: (m.3) missing literal resume anchor 'STATUS.md'"
+        m_ok=0
+    fi
+    # (m.4) model-tiering anchors.
+    if ! grep -Eqi 'tier' "$doc"; then
+        echo "  - $doc: (m.4) missing model-tiering anchor 'tier' (tier/tiering)"
+        m_ok=0
+    fi
+    if ! grep -Fq 'CONTRACT_REVIEW' "$doc"; then
+        echo "  - $doc: (m.4) missing literal cheap-tier-phase token 'CONTRACT_REVIEW'"
+        m_ok=0
+    fi
+    # (m.5) structured-verdict-header anchors.
+    if ! grep -Fq 'VERDICT' "$doc"; then
+        echo "  - $doc: (m.5) missing literal back-compat token 'VERDICT' (B9/R6)"
+        m_ok=0
+    fi
+    if ! grep -Eqi 'header|first.line' "$doc"; then
+        echo "  - $doc: (m.5) missing verdict-header anchor 'header' or 'first-line'"
+        m_ok=0
+    fi
+done
+if [ "$m_ok" -eq 1 ]; then
+    pass "(m) operating_loop.md + README.md describe gate + resume + tiering + verdict header"
+else
+    fail "(m) doc coherence — see above"
 fi
 
 # ---------------------------------------------------------------------------

@@ -74,7 +74,7 @@ agents/                          original role prompts (reference)
 contracts/                       sprint_contract_template.md sprint_contract_example.md
 rubrics/                         master_rubric.md design_rubric.md functionality_rubric.md security_rubric.md
 templates/                       spec_template.md findings_template.md trace_review_template.md prompt_patch_template.md
-docs/                            operating_loop.md file_protocol.md physics_first_principles.md
+docs/                            operating_loop.md file_protocol.md physics_first_principles.md patterns.md token-economy.md
 ```
 
 `install/` holds the files copied into `~/.claude` — the path-parameterized agents that read
@@ -96,6 +96,37 @@ Human prompt
  -> Generator fixes only findings
  -> Repeat
 ```
+
+## Loop Mechanisms
+
+Four mechanisms shape how the loop runs. They are defined canonically in
+`install/skills/agent-harness/SKILL.md`; this overview describes them so you can find them
+without reading the skill.
+
+- **Acceptance Gate (final phase).** After the last sprint reaches `VERDICT: PASS` and before
+  the report, the orchestrator spawns one `harness-evaluator` in **`EVALUATE_SYSTEM`** mode for
+  a cross-sprint, end-to-end regression over the whole project. The orchestrator reads only the
+  first `VERDICT:` line of the gate verdict (`acceptance.md`); a gate `VERDICT: FAIL` routes to
+  Repair and then **re-runs the gate** — not the per-sprint evaluate phase. You can also run the
+  gate on demand with `/agent-harness-gate <project>`.
+
+- **Resume.** State lives on disk, so an interrupted run can **resume** rather than restart. The
+  orchestrator reads `.harness/STATUS.md` to recover the recorded phase and sprint, cross-checks
+  the on-disk verdict files, and re-enters at the recorded phase (mid-sprint → Evaluate/Repair;
+  between-sprints → the next sprint's contract loop; at-acceptance-gate → the Acceptance Gate).
+  `/agent-harness-resume <project>` is the entrypoint.
+
+- **Model tiering (per spawn).** The orchestrator overrides the Agent-tool `model` field per
+  spawn. The **strong** model (`opus`) is used for the high-stakes phases (Generator BUILD,
+  Generator CONTRACT drafting, Evaluator EVALUATE, Evaluator EVALUATE_SYSTEM); a **cheaper** model
+  is downshifted for **`CONTRACT_REVIEW` only**, with the strong model kept as the frontmatter
+  default. A cheap reviewer could rubber-stamp a weak contract; the backstop is that the strong
+  EVALUATE and the strong acceptance gate re-attack it downstream.
+
+- **Structured verdict header.** Every verdict file opens with a machine-readable header whose
+  **first line is exactly `VERDICT: <token>`** (back-compatible — existing parsing relies on it),
+  followed by `SCORE:` / `BLOCKERS:` / `HIGH:`. The orchestrator routes on the header / first line
+  only and never parses the whole file.
 
 ## Non-Negotiables
 

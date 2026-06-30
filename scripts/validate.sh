@@ -13,7 +13,14 @@
 #   (c) Required SKILL.md sections — (c.1) operating-loop/phases (>=1 "## Step N"
 #                                 heading); (c.2, Sprint 005) an "Acceptance Gate"
 #                                 section heading; (c.3, Sprint 005) the literal
-#                                 token `EVALUATE_SYSTEM` (the gate's Evaluator mode).
+#                                 token `EVALUATE_SYSTEM` (the gate's Evaluator mode);
+#                                 (c.4, Sprint 006) a "Resilience / Resume" section
+#                                 heading; (c.5, Sprint 006) the transient-error
+#                                 retry-rule anchors (transient, re-read, retry, once,
+#                                 backoff, surface); (c.6, Sprint 006) the resume-
+#                                 entrypoint anchors (STATUS.md, resum, re-enter,
+#                                 recorded phase, mid-sprint, between-sprints,
+#                                 acceptance gate). No new check letter.
 #   (d) Secret scan             — known key prefixes / private-key blocks in
 #                                 git-tracked-or-to-be-tracked files (gitignored
 #                                 files are out of scope).
@@ -130,6 +137,17 @@ rm -f /tmp/_vsh_b.$$ 2>/dev/null || true
 #                          (case-insensitive) — the named final loop phase.
 #       (c.3) [Sprint 005] the literal token `EVALUATE_SYSTEM` appears (the gate
 #                          spawns the Evaluator in that mode).
+#       (c.4) [Sprint 006] >=1 heading line matching `^#{1,6} .*Resilience`
+#                          (case-insensitive) — the required Resilience/Resume section.
+#       (c.5) [Sprint 006] transient-error retry-rule anchors ALL present
+#                          (case-insensitive): transient, re-?read, retry, once,
+#                          backoff, surface.
+#       (c.6) [Sprint 006] resume-entrypoint anchors ALL present (case-insensitive):
+#                          STATUS.md, resum, re-?enter, recorded phase, mid-sprint,
+#                          between-?sprints, acceptance gate (the three §6 resume
+#                          states are enforced, not merely documented).
+#     grep -Eqi / grep -qi on SKILL_MAIN only; each sub-assertion names its own
+#     specific missing item; (c) PASSes only if ALL of c.1-c.6 hold.
 # ---------------------------------------------------------------------------
 SKILL_MAIN="install/skills/agent-harness/SKILL.md"
 if [ ! -f "$SKILL_MAIN" ]; then
@@ -148,8 +166,28 @@ else
         echo "  - $SKILL_MAIN: (c.3) missing literal token 'EVALUATE_SYSTEM' (the Acceptance Gate spawns the Evaluator in that mode)"
         c_ok=0
     fi
+    # (c.4) [Sprint 006] the required Resilience/Resume section heading.
+    if ! grep -Eqi '^#{1,6} .*Resilience' "$SKILL_MAIN"; then
+        echo "  - $SKILL_MAIN: (c.4) missing required 'Resilience / Resume' section heading (expected >=1 heading matching '^#{1,6} .*Resilience') (Sprint 006, §109)"
+        c_ok=0
+    fi
+    # (c.5) [Sprint 006] transient-error retry-rule anchors (all must be present).
+    for anchor in 'transient' 're-?read' 'retry' 'once' 'backoff' 'surface'; do
+        if ! grep -Eqi "$anchor" "$SKILL_MAIN"; then
+            echo "  - $SKILL_MAIN: (c.5) missing transient-error retry-rule anchor '$anchor'"
+            c_ok=0
+        fi
+    done
+    # (c.6) [Sprint 006] resume-entrypoint anchors (all must be present), incl. the
+    #       three §6 resume states (mid-sprint, between-sprints, acceptance gate).
+    for anchor in 'STATUS\.md' 'resum' 're-?enter' 'recorded phase' 'mid-sprint' 'between-?sprints' 'acceptance gate'; do
+        if ! grep -Eqi "$anchor" "$SKILL_MAIN"; then
+            echo "  - $SKILL_MAIN: (c.6) missing resume-entrypoint anchor '$anchor'"
+            c_ok=0
+        fi
+    done
     if [ "$c_ok" -eq 1 ]; then
-        pass "(c) required SKILL.md sections present (Step-N phases + Acceptance Gate + EVALUATE_SYSTEM) in $SKILL_MAIN"
+        pass "(c) required SKILL.md sections present (Step-N phases + Acceptance Gate + EVALUATE_SYSTEM + Resilience/Resume retry + resume anchors) in $SKILL_MAIN"
     else
         fail "(c) required SKILL.md section(s) missing in $SKILL_MAIN (see above)"
     fi

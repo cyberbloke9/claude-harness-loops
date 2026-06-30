@@ -189,12 +189,53 @@ RAW HUMAN REQUEST (planner only): <verbatim user text>
 Notice what is NOT in the template: no quotes from another agent, no "the planner decided…",
 no "the evaluator thinks…". Pointers and signals only.
 
-## Failure & resume notes
+## Resilience & Resume
 
-- Subagents cannot spawn subagents. You (the skill, running in the main loop) are the only
-  orchestrator. The three agents are leaves.
-- If a session is interrupted, a new run can resume by reading `.harness/STATUS.md` and the
-  existing verdict files to find the current phase. State lives on disk, so the loop is
-  recoverable.
-- If an agent returns nothing useful, re-read the file it was supposed to write before
-  re-spawning — the file is the source of truth, not the agent's reply text.
+Subagents cannot spawn subagents. You (the skill, running in the main loop) are the only
+orchestrator. The three agents are leaves. Because every phase's output lands on disk, the
+loop is resilient to a flaky spawn and recoverable after an interruption — the rules below say
+exactly how.
+
+### Transient-error backoff & retry
+
+An Agent-tool spawn can fail in a **transient** way: the tool errors out, times out, or
+returns nothing usable in its reply. The agent's reply text is NOT the source of truth — the
+**file on disk is.** When a spawn errors or returns nothing usable, do this, in order:
+
+1. **Re-read the target file** the agent was supposed to write (the contract, findings,
+   verdict, or spec at its absolute path). The transient error may have fired *after* the file
+   was already written. Re-reading the written target — never the reply text — is how you tell.
+2. If the target file **is present and well-formed** (it exists and parses as the expected
+   shape — e.g. a verdict file whose first line is `VERDICT: <token>`), treat the spawn as
+   having **succeeded** and proceed. Do not waste a re-spawn on work that is already on disk.
+3. If the target is **absent or malformed**, **retry the spawn ONCE** — a single retry, with
+   the identical pointers-only prompt (same paths, same mode, same control signals). A short
+   **backoff** (a brief pause) before that one retry is fine; do not loop retries.
+4. If it **still fails after that single retry**, **STOP and surface** the failure to the
+   human — name the phase and the absolute path of the target file that is still missing or
+   malformed. Do NOT silently skip the phase, fabricate a result, or retry forever.
+
+This bounds a transient error to at most one extra spawn and one surfaced stop — never an
+infinite loop, never a fabricated pass.
+
+### Resume entrypoint
+
+If a session is interrupted, a new run can **resume** instead of restarting from scratch.
+State lives on disk, so the loop is recoverable. To resume:
+
+1. **Read `.harness/STATUS.md`** — your phase table — to recover the **recorded phase** and the
+   current sprint number.
+2. Cross-check the verdict files on disk to confirm that recorded phase: read the FIRST line of
+   the relevant `sprints/sprint_NNN/contract_review.md`, `sprints/sprint_NNN/findings.md`, and
+   (if present) `acceptance.md`. The first line (`VERDICT: <token>`) tells you what the last
+   completed phase actually decided, independent of STATUS.md.
+3. **Re-enter the loop at the recorded phase** — do not replay completed phases. Map the
+   recorded state to its re-entry step:
+   - **mid-sprint** — a sprint's build/evaluate/repair was in flight: re-enter at that sprint's
+     **Evaluate (Step 4)** or **Repair (Step 5)** per the last recorded sub-phase.
+   - **between-sprints** — a sprint reached `VERDICT: PASS` and the next sprint has not started:
+     re-enter at the next sprint's **Contract negotiation loop (Step 2)**.
+   - **at-acceptance-gate** — every per-sprint loop has PASSed and the **acceptance gate** is
+     pending or last came back `VERDICT: FAIL`: re-enter at the **Acceptance Gate (Step 6)**.
+
+Update STATUS.md as you go so the next resume lands on the correct step.

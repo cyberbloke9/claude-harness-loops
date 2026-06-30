@@ -89,6 +89,27 @@
 #                                       progressive disclosure, STATUS.md, Edit, disk|file-only).
 #                                 docs/ is outside check (a)'s globs, so (k) is isolated:
 #                                 it cannot affect (a)-(j) and they cannot mask it.
+#   (l) token-economy.md (Sprint 010, B16) — docs/token-economy.md codifies the
+#                                 harness's token-minimization + prompt-caching discipline
+#                                 and the model-tiering risk/backstop. A NEW check letter
+#                                 (NOT a (c)/(k) sub-assertion; (c) globs no docs, (k) is the
+#                                 patterns.md check). Deterministic, NO network, NO install.sh
+#                                 run. Starts from the EXACT path (asserted, not globbed) so a
+#                                 delete/rename FAILs, not passes vacuously. grep -Eqi for
+#                                 headings/word anchors; grep -Fq (fixed-string, case-sensitive)
+#                                 for the literal API-param + digit tokens so `_`, case, and the
+#                                 `1024` digits match exactly:
+#                                 (l.0) docs/token-economy.md exists (load-bearing guard);
+#                                 (l.1) >=1 title heading `^#{1,6} `;
+#                                 (l.2) six B16 topic anchors (pointer, progressive disclosure,
+#                                       downsampl, prompt[ -]cach, rubber.?stamp, backstop);
+#                                 (l.3) verdict-header/first-line read: literal `VERDICT`
+#                                       (grep -Fq) AND header|first.line (grep -Eqi);
+#                                 (l.4) image-downsampling resolution literal `1024` (grep -Fq);
+#                                 (l.5) prompt-caching API params (grep -Fq): cache_control,
+#                                       ephemeral, cache_read_input_tokens.
+#                                 docs/ is outside check (a)'s globs, so (l) is isolated:
+#                                 it cannot affect (a)-(k) and they cannot mask it.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -987,6 +1008,61 @@ else
         pass "(k) patterns.md lineage (present, title, 5 sources + links, sub-patterns, mechanism mapping)"
     else
         fail "(k) patterns.md lineage — see above"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# (l) token-economy.md (Sprint 010, B16) — docs/token-economy.md codifies the
+#     harness's token-minimization + prompt-caching discipline and the model-
+#     tiering risk/backstop. Starts from the EXACT path (l.0) so a delete/rename
+#     FAILs, not passes vacuously. NO network, NO install.sh run. grep -Eqi for
+#     headings/word anchors; grep -Fq (fixed-string, case-sensitive) for the
+#     literal API-param + digit tokens. (l) PASSes only if ALL of l.0-l.5 hold;
+#     each sub-assertion names its own specific missing item.
+# ---------------------------------------------------------------------------
+TOKECON_DOC="docs/token-economy.md"
+# (l.0) presence — the load-bearing guard.
+if [ ! -f "$TOKECON_DOC" ]; then
+    fail "(l) token-economy.md — required file is MISSING: $TOKECON_DOC (l.0)"
+else
+    l_ok=1
+    # (l.1) >=1 title heading.
+    if ! grep -Eq '^#{1,6} ' "$TOKECON_DOC"; then
+        echo "  - $TOKECON_DOC: (l.1) no Markdown title heading (expected >=1 line matching '^#{1,6} ')"
+        l_ok=0
+    fi
+    # (l.2) six B16 topic anchors (case-insensitive).
+    for anchor in 'pointer' 'progressive disclosure' 'downsampl' 'prompt[ -]cach' 'rubber.?stamp' 'backstop'; do
+        if ! grep -Eqi "$anchor" "$TOKECON_DOC"; then
+            echo "  - $TOKECON_DOC: (l.2) missing B16 topic anchor '$anchor'"
+            l_ok=0
+        fi
+    done
+    # (l.3) verdict-header/first-line read: literal VERDICT (case-sensitive) AND header|first.line.
+    if ! grep -Fq 'VERDICT' "$TOKECON_DOC"; then
+        echo "  - $TOKECON_DOC: (l.3) missing literal back-compat token 'VERDICT' (B9/R6)"
+        l_ok=0
+    fi
+    if ! grep -Eqi 'header|first.line' "$TOKECON_DOC"; then
+        echo "  - $TOKECON_DOC: (l.3) missing verdict-read anchor 'header' or 'first-line'"
+        l_ok=0
+    fi
+    # (l.4) image-downsampling resolution literal '1024' (fixed-string, no thousands separator).
+    if ! grep -Fq '1024' "$TOKECON_DOC"; then
+        echo "  - $TOKECON_DOC: (l.4) missing literal '1024' (the <=1024px downsampling guidance)"
+        l_ok=0
+    fi
+    # (l.5) prompt-caching API params — fixed-string, case-sensitive. ALL must be present.
+    for param in 'cache_control' 'ephemeral' 'cache_read_input_tokens'; do
+        if ! grep -Fq "$param" "$TOKECON_DOC"; then
+            echo "  - $TOKECON_DOC: (l.5) missing prompt-caching API param '$param'"
+            l_ok=0
+        fi
+    done
+    if [ "$l_ok" -eq 1 ]; then
+        pass "(l) token-economy.md (present, title, 6 topics, verdict-header read, <=1024px, cache params)"
+    else
+        fail "(l) token-economy.md — see above"
     fi
 fi
 

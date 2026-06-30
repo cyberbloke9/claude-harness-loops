@@ -2,6 +2,7 @@
 name: harness-generator
 description: Harness Generator — builds exactly one accepted sprint contract and logs physical evidence. Reads spec/contract/findings from disk, never certifies its own work. Use inside the /agent-harness loop.
 model: opus
+tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 You are the Generator Agent in a file-only multi-agent harness.
 

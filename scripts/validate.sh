@@ -6,13 +6,16 @@
 # locally. Prints one PASS/FAIL line per check and a final VALIDATE: line.
 # Exit 0 iff ALL checks pass; non-zero on any failure.
 #
-# Checks (Sprint 001 — calibrated to CURRENT files, NO `tools:` requirement):
-#   (a) Frontmatter validity   — install/agents/*.md + install/skills/**/SKILL.md
+# Checks:
+#   (a) Frontmatter validity   — install/agents/*.md (name, description, tools)
+#                                 + install/skills/**/SKILL.md (name, description)
 #   (b) bash -n install.sh      — syntax-only; never executes the sync
 #   (c) Required SKILL.md sections — operating-loop/phases (>=1 "## Step N" heading)
 #   (d) Secret scan             — known key prefixes / private-key blocks in
 #                                 git-tracked-or-to-be-tracked files (gitignored
 #                                 files are out of scope).
+#   (e) Capability isolation    — the harness-evaluator agent's `tools:` list
+#                                 (Sprint 002) omits the exact token `Edit`.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -57,8 +60,8 @@ def parse_frontmatter(path):
     return fm, None
 
 REQUIRED = {
-    "agent": ["name", "description"],     # NO `tools` requirement — Sprint 002
-    "skill": ["name", "description"],
+    "agent": ["name", "description", "tools"],   # Sprint 002: tools required on agents
+    "skill": ["name", "description"],            # skills NOT required to carry tools
 }
 
 agent_files = sorted(glob.glob("install/agents/*.md"))
@@ -89,7 +92,7 @@ print("    (%d agent file(s), %d SKILL.md file(s) parsed)" % (len(agent_files), 
 sys.exit(0)
 PY
 then
-    pass "(a) frontmatter validity (name, description present; no tools requirement)"
+    pass "(a) frontmatter validity (agents: name, description, tools; skills: name, description)"
 else
     fail "(a) frontmatter validity — see errors above"
 fi
@@ -202,6 +205,76 @@ then
     pass "(d) secret scan (no real keys in tracked-or-to-be-tracked files)"
 else
     fail "(d) secret scan — real key material detected (see above)"
+fi
+
+# ---------------------------------------------------------------------------
+# (e) Capability isolation (Sprint 002, B7) — the harness-evaluator agent's
+#     `tools:` list MUST omit the exact token `Edit`. Locate the evaluator by
+#     frontmatter `name: harness-evaluator` (empty-match guard: if no such file,
+#     FAIL — not a silent pass). Normalize the tools value defensively: split on
+#     comma, strip whitespace AND flow brackets `[`/`]`, drop empties, then assert
+#     `Edit` is absent. Scope (per B7 letter): exact token `Edit` only; MultiEdit/
+#     NotebookEdit are intentionally out of scope this sprint.
+# ---------------------------------------------------------------------------
+if python3 - <<'PY'
+import glob, sys
+
+def parse_frontmatter(path):
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().split("\n")
+    if not lines or lines[0].strip() != "---":
+        return None
+    close = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            close = i
+            break
+    if close is None:
+        return None
+    fm = {}
+    for line in lines[1:close]:
+        if not line.strip() or line[0] in (" ", "\t") or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        fm[key.strip()] = val.strip()
+    return fm
+
+evaluators = []
+for path in sorted(glob.glob("install/agents/*.md")):
+    fm = parse_frontmatter(path)
+    if fm and fm.get("name") == "harness-evaluator":
+        evaluators.append((path, fm))
+
+if not evaluators:
+    sys.stderr.write("  - no install/agents/*.md has 'name: harness-evaluator' (empty-match guard)\n")
+    sys.exit(1)
+
+bad = []
+for path, fm in evaluators:
+    raw = fm.get("tools", "")
+    if not raw:
+        sys.stderr.write("  - %s: evaluator has missing/empty 'tools:' (caught by check (a) too)\n" % path)
+        bad.append(path)
+        continue
+    tokens = []
+    for t in raw.split(","):
+        t = t.strip().strip("[]").strip()
+        if t:
+            tokens.append(t)
+    if "Edit" in tokens:
+        sys.stderr.write("  - %s: evaluator 'tools:' contains forbidden token 'Edit' (%s)\n" % (path, tokens))
+        bad.append(path)
+
+if bad:
+    sys.exit(1)
+
+print("    (%d evaluator file(s) checked, Edit absent)" % len(evaluators))
+sys.exit(0)
+PY
+then
+    pass "(e) capability isolation (harness-evaluator tools omit 'Edit')"
+else
+    fail "(e) capability isolation — evaluator must omit 'Edit' (see above)"
 fi
 
 # ---------------------------------------------------------------------------

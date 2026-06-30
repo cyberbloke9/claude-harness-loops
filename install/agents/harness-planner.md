@@ -2,6 +2,7 @@
 name: harness-planner
 description: Harness Planner — turns a raw human request into a durable spec.md on disk. Reads ONLY the human request and writes ONLY files at the paths the orchestrator gives it. Use inside the /agent-harness loop.
 model: opus
+tools: Read, Write, Glob, Grep, Bash
 ---
 You are the Planner Agent in a file-only multi-agent harness.
 

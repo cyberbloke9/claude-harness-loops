@@ -366,6 +366,142 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# (g) Verdict-header schema + line-1 back-compat (Sprint 004, B9/R6) — locate the
+#     harness-evaluator agent by frontmatter `name: harness-evaluator` (empty-match
+#     guard: if no such file, FAIL). Assert the `## Verdict Header (machine-readable)`
+#     heading is present. Extract every fenced code block; a "verdict example block"
+#     is any block whose first non-empty content line (after trimming) starts with
+#     `VERDICT:`. Require >=1 such block (empty-match guard). For each, after trimming
+#     leading/trailing blank lines inside the fence, assert exactly four non-empty
+#     lines matching, in order:
+#       1. ^VERDICT: (ACCEPT|REJECT|PASS|FAIL)$   <- R6 line-1 back-compat
+#       2. ^SCORE: (n/a|[0-5](\.[0-9]+)?)$
+#       3. ^BLOCKERS: (0|[1-9][0-9]*)$
+#       4. ^HIGH: (0|[1-9][0-9]*)$
+#     Cross-field: ACCEPT/PASS => BLOCKERS==0 AND HIGH==0. Coverage: >=1 ACCEPT/REJECT
+#     block AND >=1 PASS/FAIL block. A well-formed line 1 with malformed line 2-4 (or
+#     a 5th line, or <4 lines) is a FAIL — line-1-only is NOT sufficient. bash +
+#     python3 stdlib only (NO import yaml), reusing the parse_frontmatter pattern.
+# ---------------------------------------------------------------------------
+if python3 - <<'PY'
+import glob, re, sys
+
+def parse_frontmatter(path):
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().split("\n")
+    if not lines or lines[0].strip() != "---":
+        return None
+    close = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            close = i
+            break
+    if close is None:
+        return None
+    fm = {}
+    for line in lines[1:close]:
+        if not line.strip() or line[0] in (" ", "\t") or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        fm[key.strip()] = val.strip()
+    return fm
+
+evaluators = []
+for path in sorted(glob.glob("install/agents/*.md")):
+    fm = parse_frontmatter(path)
+    if fm and fm.get("name") == "harness-evaluator":
+        evaluators.append(path)
+
+if not evaluators:
+    sys.stderr.write("  - no install/agents/*.md has 'name: harness-evaluator' (empty-match guard)\n")
+    sys.exit(1)
+
+HEADING = "## verdict header (machine-readable)"
+RE_V = re.compile(r'^VERDICT: (ACCEPT|REJECT|PASS|FAIL)$')
+RE_S = re.compile(r'^SCORE: (n/a|[0-5](\.[0-9]+)?)$')
+RE_B = re.compile(r'^BLOCKERS: (0|[1-9][0-9]*)$')
+RE_H = re.compile(r'^HIGH: (0|[1-9][0-9]*)$')
+
+errors = []
+for path in evaluators:
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    lines = text.split("\n")
+
+    if HEADING not in text.lower():
+        errors.append("%s: missing required heading '## Verdict Header (machine-readable)'" % path)
+
+    # Extract fenced code blocks (``` delimited). Toggle on any line whose
+    # stripped form starts with ```. Markdown does not nest fences.
+    blocks, cur, in_fence = [], [], False
+    for line in lines:
+        if line.lstrip().startswith("```"):
+            if in_fence:
+                blocks.append(cur); cur = []; in_fence = False
+            else:
+                in_fence = True; cur = []
+            continue
+        if in_fence:
+            cur.append(line)
+
+    verdict_blocks = []
+    for blk in blocks:
+        b = blk[:]
+        while b and not b[0].strip():
+            b.pop(0)
+        while b and not b[-1].strip():
+            b.pop()
+        if b and b[0].strip().startswith("VERDICT:"):
+            verdict_blocks.append(b)
+
+    if not verdict_blocks:
+        errors.append("%s: no verdict example block (fenced block starting with 'VERDICT:') found (empty-match guard)" % path)
+        continue
+
+    tokens_seen = set()
+    for b in verdict_blocks:
+        if len(b) != 4:
+            errors.append("%s: verdict block must be exactly 4 lines, got %d: %r" % (path, len(b), b))
+            continue
+        m = RE_V.match(b[0])
+        if not m:
+            errors.append("%s: line 1 violates back-compat '^VERDICT: (ACCEPT|REJECT|PASS|FAIL)$': %r" % (path, b[0]))
+            continue
+        token = m.group(1)
+        tokens_seen.add(token)
+        if not RE_S.match(b[1]):
+            errors.append("%s: SCORE line violates '^SCORE: (n/a|[0-5](\\.[0-9]+)?)$': %r" % (path, b[1]))
+        mb = RE_B.match(b[2])
+        if not mb:
+            errors.append("%s: BLOCKERS line violates '^BLOCKERS: (0|[1-9][0-9]*)$': %r" % (path, b[2]))
+        mh = RE_H.match(b[3])
+        if not mh:
+            errors.append("%s: HIGH line violates '^HIGH: (0|[1-9][0-9]*)$': %r" % (path, b[3]))
+        if token in ("ACCEPT", "PASS") and mb and mh:
+            if mb.group(1) != "0" or mh.group(1) != "0":
+                errors.append("%s: %s verdict must have BLOCKERS:0 and HIGH:0 (got BLOCKERS:%s HIGH:%s)"
+                              % (path, token, mb.group(1), mh.group(1)))
+
+    if not (tokens_seen & {"ACCEPT", "REJECT"}):
+        errors.append("%s: no CONTRACT_REVIEW verdict block (ACCEPT/REJECT) found (coverage)" % path)
+    if not (tokens_seen & {"PASS", "FAIL"}):
+        errors.append("%s: no EVALUATE verdict block (PASS/FAIL) found (coverage)" % path)
+
+if errors:
+    for e in errors:
+        sys.stderr.write("  - %s\n" % e)
+    sys.exit(1)
+
+print("    (%d evaluator file(s) checked; verdict-header schema + line-1 back-compat OK)" % len(evaluators))
+sys.exit(0)
+PY
+then
+    pass "(g) verdict-header schema + line-1 back-compat (^VERDICT: token; SCORE/BLOCKERS/HIGH)"
+else
+    fail "(g) verdict-header schema — malformed/missing header (see above)"
+fi
+
+# ---------------------------------------------------------------------------
 echo "---"
 if [ "$FAIL" -ne 0 ]; then
     echo "VALIDATE: FAIL"

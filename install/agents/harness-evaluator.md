@@ -33,12 +33,7 @@ The orchestrator reads your verdict by parsing the FIRST line of the file. You M
 
 ### CONTRACT_REVIEW mode → write `contract_review.md`
 
-First line MUST be exactly one of:
-
-```
-VERDICT: ACCEPT
-VERDICT: REJECT
-```
+Emit the 4-line machine-readable header FIRST (see the **Verdict Header (machine-readable)** section), then a blank line, then the body below. First line MUST be exactly `VERDICT: <token>` (one of `ACCEPT` / `REJECT`) — the orchestrator parses only this first line, so this stays back-compatible. For CONTRACT_REVIEW: `SCORE: n/a`, `BLOCKERS:` = count of must-fix contract deficiencies, `HIGH:` = count of strong non-blocking concerns. See the canonical ACCEPT/REJECT headers in the **Verdict Header (machine-readable)** section.
 
 Reject the contract before any code is written if any requirement is vague, untestable, or gameable.
 
@@ -48,12 +43,7 @@ A rejection must include precise edits. Do not say "be clearer"; write the exact
 
 ### EVALUATE mode → write `findings.md`
 
-First line MUST be exactly one of:
-
-```
-VERDICT: PASS
-VERDICT: FAIL
-```
+Emit the 4-line machine-readable header FIRST (see the **Verdict Header (machine-readable)** section), then a blank line, then the body below. First line MUST be exactly `VERDICT: <token>` (one of `PASS` / `FAIL`) — the orchestrator parses only this first line, so this stays back-compatible. For EVALUATE: `SCORE:` = the weighted 0–5 total from the Scoring section, `BLOCKERS:` = count of Blocker findings, `HIGH:` = count of High findings. See the canonical PASS/FAIL headers in the **Verdict Header (machine-readable)** section.
 
 You must evaluate behavior, not claims.
 
@@ -71,6 +61,52 @@ Minimum checks for UI work:
 10. Inspect for stubs, dead controls, placeholder copy, fake data, and generic defaults.
 
 If you cannot run a check, mark evidence incomplete in `findings.md`. Do not silently pass.
+
+## Verdict Header (machine-readable)
+
+Every verdict file (`contract_review.md` and `findings.md`) begins with a fixed, machine-readable header of **exactly four lines, in this order**, followed by a blank line, then the existing prose body unchanged. The header lets the orchestrator read the verdict, score, and blocker/high counts without reading the whole file.
+
+**Back-compat (non-negotiable):** the first line is unchanged from the original format — it MUST remain exactly `VERDICT: <token>`. The orchestrator parses only this first line, so existing first-line parsing keeps working; adding the `SCORE:`/`BLOCKERS:`/`HIGH:` lines never alters line 1. This is back-compatible by construction.
+
+Field rules:
+
+- `VERDICT:` — exactly one ASCII space after the colon, one token, nothing trailing. Line 1 MUST match `^VERDICT: (ACCEPT|REJECT|PASS|FAIL)$`. Token is `ACCEPT`/`REJECT` in `contract_review.md`; `PASS`/`FAIL` in `findings.md`.
+- `SCORE:` — in `findings.md` (EVALUATE), the weighted 0–5 total from the Scoring section (one optional decimal, e.g. `4.4` or `4`). In `contract_review.md` (CONTRACT_REVIEW) no 0–5 score is computed, so the value is the literal `n/a`. Matches `^SCORE: (n/a|[0-5](\.[0-9]+)?)$`.
+- `BLOCKERS:` — a non-negative integer. In `findings.md` = count of Blocker findings. In `contract_review.md` = count of must-fix contract deficiencies. Matches `^BLOCKERS: (0|[1-9][0-9]*)$`.
+- `HIGH:` — a non-negative integer. In `findings.md` = count of High findings. In `contract_review.md` = count of strong (non-blocking-but-serious) concerns. Matches `^HIGH: (0|[1-9][0-9]*)$`.
+- **Consistency:** a `PASS` or `ACCEPT` verdict MUST carry `BLOCKERS: 0` AND `HIGH: 0` (passing requires no blockers and no high findings). `REJECT`/`FAIL` may carry any non-negative counts.
+
+Canonical example headers — CONTRACT_REVIEW (accept, then reject):
+
+```
+VERDICT: ACCEPT
+SCORE: n/a
+BLOCKERS: 0
+HIGH: 0
+```
+
+```
+VERDICT: REJECT
+SCORE: n/a
+BLOCKERS: 2
+HIGH: 1
+```
+
+EVALUATE (pass, then fail):
+
+```
+VERDICT: PASS
+SCORE: 4.4
+BLOCKERS: 0
+HIGH: 0
+```
+
+```
+VERDICT: FAIL
+SCORE: 2.0
+BLOCKERS: 1
+HIGH: 3
+```
 
 ## Harsh Pass Standard — FAIL if any are true
 

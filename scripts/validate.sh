@@ -34,6 +34,20 @@
 #                                 harness-evaluator agent file documents the
 #                                 cross-sprint, end-to-end regression mode (token +
 #                                 `EVALUATE_SYSTEM mode` heading + anchors + PASS/FAIL).
+#   (i) Model selection per spawn (Sprint 007, B12/R3) — the main SKILL.md carries a
+#                                 `## Model selection per spawn` section enforcing
+#                                 per-spawn model tiering, AND the install agents keep
+#                                 the strong model as their frontmatter default:
+#                                 (i.1) `Model selection per spawn` heading present in
+#                                 SKILL_MAIN; (i.2) every install/agents/*.md that
+#                                 DECLARES `model:` declares `opus` (the strong default;
+#                                 `model` is OPTIONAL per §105 — absence is allowed);
+#                                 (i.3) strong-tier phases named (strong, model, BUILD,
+#                                 CONTRACT, EVALUATE, EVALUATE_SYSTEM); (i.4) cheap model
+#                                 restricted to CONTRACT_REVIEW ONLY (cheaper, downshift,
+#                                 CONTRACT_REVIEW, only); (i.5) rubber-stamp risk +
+#                                 backstop documented (rubber-stamp, backstop). Check (c)
+#                                 is NOT modified; (i) owns the cross-file frontmatter glob.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -660,6 +674,120 @@ then
     pass "(h) evaluator EVALUATE_SYSTEM mode documented (token + heading + cross-sprint/end-to-end/regression + PASS/FAIL)"
 else
     fail "(h) evaluator EVALUATE_SYSTEM mode — missing token/heading/anchor (see above)"
+fi
+
+# ---------------------------------------------------------------------------
+# (i) Model selection per spawn (Sprint 007, B12/R3). A NEW check letter (NOT a (c)
+#     sub-assertion): (c) is SKILL_MAIN-only by construction, but (i) must ALSO assert
+#     on install/agents/*.md frontmatter (the default-stays-strong guard), which is
+#     outside (c)'s single-file scope. (c) is left untouched. (i) PASSes only if ALL of
+#     i.1-i.5 hold; each sub-assertion names its own specific failure reason.
+#       (i.1) >=1 heading matching `^#{1,6} .*Model selection per spawn` (case-insensitive)
+#             in SKILL_MAIN (SKILL_MAIN not-found => FAIL, mirroring (c)).
+#       (i.2) every install/agents/*.md that DECLARES a top-level `model:` key declares
+#             the strong default `opus`; `model` MAY be omitted (OPTIONAL per §105 —
+#             absence is never a failure). Any declared model != opus => FAIL naming the
+#             file + offending value. Empty glob => FAIL. Reuses parse_frontmatter.
+#       (i.3) strong-tier phases named in SKILL_MAIN (case-insensitive): strong AND model
+#             AND BUILD AND CONTRACT AND EVALUATE AND EVALUATE_SYSTEM.
+#       (i.4) cheap model restricted to CONTRACT_REVIEW only (R3 crux), all present in
+#             SKILL_MAIN (case-insensitive): cheaper AND downshift AND CONTRACT_REVIEW AND
+#             only. The NEW tokens cheaper/downshift are the discriminating hinge so the
+#             check cannot pass on residual pre-enhancement text.
+#       (i.5) rubber-stamp risk + backstop, both present in SKILL_MAIN (case-insensitive):
+#             rubber-stamp AND backstop.
+#     grep -Eqi / grep -qi on SKILL_MAIN for i.1/i.3/i.4/i.5; python3-stdlib frontmatter
+#     parse (NO import yaml) for i.2. bash + grep + python3-stdlib only.
+# ---------------------------------------------------------------------------
+if [ ! -f "$SKILL_MAIN" ]; then
+    fail "(i) main skill not found: $SKILL_MAIN"
+else
+    i_ok=1
+    # (i.1) section heading present
+    if ! grep -Eqi '^#{1,6} .*Model selection per spawn' "$SKILL_MAIN"; then
+        echo "  - $SKILL_MAIN: (i.1) missing required '## Model selection per spawn' section heading (Sprint 007, §109)"
+        i_ok=0
+    fi
+    # (i.2) frontmatter default stays strong — cross-file glob over install/agents/*.md
+    if python3 - <<'PY'
+import glob, sys
+
+def parse_frontmatter(path):
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().split("\n")
+    if not lines or lines[0].strip() != "---":
+        return None
+    close = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            close = i
+            break
+    if close is None:
+        return None
+    fm = {}
+    for line in lines[1:close]:
+        if not line.strip() or line[0] in (" ", "\t") or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        fm[key.strip()] = val.strip()
+    return fm
+
+STRONG = "opus"
+agent_files = sorted(glob.glob("install/agents/*.md"))
+errors = []
+if not agent_files:
+    errors.append("no files matched install/agents/*.md (empty-glob guard)")
+
+for path in agent_files:
+    fm = parse_frontmatter(path)
+    if fm is None:
+        errors.append("%s: unparseable frontmatter (caught by check (a) too)" % path)
+        continue
+    # `model` is OPTIONAL (§105): only validate it when DECLARED.
+    if "model" in fm:
+        val = fm.get("model", "")
+        if val != STRONG:
+            errors.append("%s: frontmatter 'model: %s' is not the strong default '%s' "
+                          "(the cheap tier must not leak into a frontmatter default)" % (path, val, STRONG))
+
+if errors:
+    for e in errors:
+        sys.stderr.write("  - (i.2) %s\n" % e)
+    sys.exit(1)
+sys.exit(0)
+PY
+    then
+        :
+    else
+        i_ok=0
+    fi
+    # (i.3) strong-tier phases named
+    for anchor in 'strong' 'model' 'BUILD' 'CONTRACT' 'EVALUATE' 'EVALUATE_SYSTEM'; do
+        if ! grep -qi "$anchor" "$SKILL_MAIN"; then
+            echo "  - $SKILL_MAIN: (i.3) missing strong-tier-phase anchor '$anchor'"
+            i_ok=0
+        fi
+    done
+    # (i.4) cheap model restricted to CONTRACT_REVIEW only (R3 crux). cheaper/downshift
+    #       are NEW discriminators so the check cannot pass on residual text.
+    for anchor in 'cheaper' 'downshift' 'CONTRACT_REVIEW' 'only'; do
+        if ! grep -qi "$anchor" "$SKILL_MAIN"; then
+            echo "  - $SKILL_MAIN: (i.4) missing cheap-model-restriction anchor '$anchor' (R3 crux: cheap model is CONTRACT_REVIEW only)"
+            i_ok=0
+        fi
+    done
+    # (i.5) rubber-stamp risk + backstop
+    for anchor in 'rubber-?stamp' 'backstop'; do
+        if ! grep -Eqi "$anchor" "$SKILL_MAIN"; then
+            echo "  - $SKILL_MAIN: (i.5) missing R3 rubber-stamp/backstop anchor '$anchor'"
+            i_ok=0
+        fi
+    done
+    if [ "$i_ok" -eq 1 ]; then
+        pass "(i) model selection per spawn (heading + frontmatter default strong + strong phases + cheap-for-CONTRACT_REVIEW-only + rubber-stamp/backstop) in $SKILL_MAIN"
+    else
+        fail "(i) model selection per spawn — missing section/anchor/frontmatter-default (see above)"
+    fi
 fi
 
 # ---------------------------------------------------------------------------

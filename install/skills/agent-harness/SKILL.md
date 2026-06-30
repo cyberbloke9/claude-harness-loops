@@ -152,8 +152,9 @@ control signals only.
   same evaluate↔repair cap. If the cap is hit while the gate is still `VERDICT: FAIL`, surface
   the failing `acceptance.md` to the user and STOP — do **not** report success on a failing gate.
 
-**Model note (defer to Sprint 007):** the gate uses the Evaluator's default (strong) model;
-explicit per-spawn model tiering (B12) is Sprint 007 and is a NON-GOAL here.
+**Model note:** the Acceptance Gate (`EVALUATE_SYSTEM`) uses the **strong** model — it is one
+of the four strong-tier phases. See **`## Model selection per spawn`** below for the per-spawn
+`model`-override rule (which phases are strong, and the one phase that is downshifted).
 
 ## Step 7 — Report
 
@@ -188,6 +189,44 @@ RAW HUMAN REQUEST (planner only): <verbatim user text>
 
 Notice what is NOT in the template: no quotes from another agent, no "the planner decided…",
 no "the evaluator thinks…". Pointers and signals only.
+
+## Model selection per spawn
+
+The agent frontmatter declares the **strong** model (`opus`) as the **default** for all three
+agents, so a spawn that sets nothing already runs strong. On **every** Agent-tool spawn you set
+the Agent tool's **`model`** field **per spawn**, overriding that frontmatter default for that
+one spawn. Rigor lives in the strong tier; only one narrow phase is downshifted.
+
+**Strong model (`opus`) — set explicitly on these phases** (where correctness is expensive to
+get wrong):
+
+1. **Generator `BUILD`** (Step 3) — building the code is the highest-stakes step → **strong**.
+2. **Generator `CONTRACT`** drafting (Step 2a) — a sloppy contract poisons the whole sprint →
+   **strong**.
+3. **Evaluator `EVALUATE`** (Step 4) — the adversarial per-sprint verdict must have teeth →
+   **strong**.
+4. **Evaluator `EVALUATE_SYSTEM`** (the Acceptance Gate, Step 6) — the whole-project gate is the
+   last line of defense → **strong**.
+
+`PLANNER` (Step 1) and `REPAIR` (Step 5) are **not** downshifted either — they simply inherit the
+strong frontmatter default. The cheap tier is reserved for `CONTRACT_REVIEW` and nothing else.
+
+**Cheaper/faster model — `CONTRACT_REVIEW` ONLY.** For the Evaluator's **`CONTRACT_REVIEW`**
+spawn (Step 2b) — and for **that one spawn only** — you **downshift** the `model` field to a
+**cheaper**/faster tier (the Agent-tool `model` enum is `sonnet | opus | haiku | fable`; use
+**`haiku`** here as the concrete cheaper model, with `opus` as the strong tier). This is the
+single phase that runs on the cheap model. Do **not** extend the cheap model / the downshift to
+any other phase — `BUILD`, `CONTRACT` drafting, `EVALUATE`, `EVALUATE_SYSTEM`, `PLANNER`, and
+`REPAIR` all stay **strong**.
+
+**R3 — rubber-stamp risk + backstop.** A cheaper `CONTRACT_REVIEW` model **could rubber-stamp** a
+weak contract — accept it without the scrutiny a strong reviewer would apply. The **backstop**
+that contains this risk: the work is re-examined downstream by **strong** models — the strong
+per-sprint **`EVALUATE`** (Step 4) re-attacks whatever the contract let through, and the strong
+**acceptance gate** (`EVALUATE_SYSTEM`, Step 6) does a whole-project regression. So a
+rubber-stamped contract is caught later by a strong phase; the downshift is bounded to the one
+cheapest-to-recover step. (The full rubber-stamp / token-economy write-up lives in
+`docs/token-economy.md` — out of scope here; this section states the risk + backstop inline.)
 
 ## Resilience & Resume
 

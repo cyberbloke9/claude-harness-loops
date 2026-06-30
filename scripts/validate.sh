@@ -10,7 +10,10 @@
 #   (a) Frontmatter validity   — install/agents/*.md (name, description, tools)
 #                                 + install/skills/**/SKILL.md (name, description)
 #   (b) bash -n install.sh      — syntax-only; never executes the sync
-#   (c) Required SKILL.md sections — operating-loop/phases (>=1 "## Step N" heading)
+#   (c) Required SKILL.md sections — (c.1) operating-loop/phases (>=1 "## Step N"
+#                                 heading); (c.2, Sprint 005) an "Acceptance Gate"
+#                                 section heading; (c.3, Sprint 005) the literal
+#                                 token `EVALUATE_SYSTEM` (the gate's Evaluator mode).
 #   (d) Secret scan             — known key prefixes / private-key blocks in
 #                                 git-tracked-or-to-be-tracked files (gitignored
 #                                 files are out of scope).
@@ -19,6 +22,11 @@
 #   (f) Generator hygiene clause — the harness-generator agent file (Sprint 003)
 #                                 has the "Pre-Handoff Secrets & Git-Hygiene
 #                                 Checklist" section AND all four required clauses.
+#   (g) Verdict-header schema    — line-1 back-compat + 4-line header (Sprint 004).
+#   (h) Evaluator EVALUATE_SYSTEM mode documented (Sprint 005, B10) — the
+#                                 harness-evaluator agent file documents the
+#                                 cross-sprint, end-to-end regression mode (token +
+#                                 `EVALUATE_SYSTEM mode` heading + anchors + PASS/FAIL).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -114,17 +122,37 @@ fi
 rm -f /tmp/_vsh_b.$$ 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# (c) Required SKILL.md sections — operating-loop/phases section.
-#     Calibrated to current content: >=1 heading matching `^#{1,3} Step [0-9]`.
+# (c) Required SKILL.md sections (grows by sprint — §109). All sub-assertions
+#     must hold; each reports its own specific failure reason.
+#       (c.1) [preserved]  operating-loop/phases: >=1 heading matching
+#                          `^#{1,3} Step [0-9]`.
+#       (c.2) [Sprint 005] >=1 heading line whose text contains `Acceptance Gate`
+#                          (case-insensitive) — the named final loop phase.
+#       (c.3) [Sprint 005] the literal token `EVALUATE_SYSTEM` appears (the gate
+#                          spawns the Evaluator in that mode).
 # ---------------------------------------------------------------------------
 SKILL_MAIN="install/skills/agent-harness/SKILL.md"
 if [ ! -f "$SKILL_MAIN" ]; then
     fail "(c) main skill not found: $SKILL_MAIN"
-elif grep -Eq '^#{1,3} Step [0-9]' "$SKILL_MAIN"; then
-    pass "(c) required SKILL.md section present (operating-loop/phases: '## Step N' headings) in $SKILL_MAIN"
 else
-    echo "  - $SKILL_MAIN: missing operating-loop/phases section (expected >=1 heading matching '^#{1,3} Step [0-9]')"
-    fail "(c) required SKILL.md section missing in $SKILL_MAIN"
+    c_ok=1
+    if ! grep -Eq '^#{1,3} Step [0-9]' "$SKILL_MAIN"; then
+        echo "  - $SKILL_MAIN: (c.1) missing operating-loop/phases section (expected >=1 heading matching '^#{1,3} Step [0-9]')"
+        c_ok=0
+    fi
+    if ! grep -Eqi '^#{1,6} .*Acceptance Gate' "$SKILL_MAIN"; then
+        echo "  - $SKILL_MAIN: (c.2) missing required 'Acceptance Gate' section heading (Sprint 005, §109)"
+        c_ok=0
+    fi
+    if ! grep -q 'EVALUATE_SYSTEM' "$SKILL_MAIN"; then
+        echo "  - $SKILL_MAIN: (c.3) missing literal token 'EVALUATE_SYSTEM' (the Acceptance Gate spawns the Evaluator in that mode)"
+        c_ok=0
+    fi
+    if [ "$c_ok" -eq 1 ]; then
+        pass "(c) required SKILL.md sections present (Step-N phases + Acceptance Gate + EVALUATE_SYSTEM) in $SKILL_MAIN"
+    else
+        fail "(c) required SKILL.md section(s) missing in $SKILL_MAIN (see above)"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -499,6 +527,101 @@ then
     pass "(g) verdict-header schema + line-1 back-compat (^VERDICT: token; SCORE/BLOCKERS/HIGH)"
 else
     fail "(g) verdict-header schema — malformed/missing header (see above)"
+fi
+
+# ---------------------------------------------------------------------------
+# (h) Evaluator EVALUATE_SYSTEM mode documented (Sprint 005, B10) — locate the
+#     harness-evaluator agent by frontmatter `name: harness-evaluator` (empty-match
+#     guard: if no such file, FAIL — not a silent pass, mirroring (e)/(f)/(g)).
+#     Assert, naming the specific missing item on failure:
+#       (h.1) the literal token `EVALUATE_SYSTEM` appears (mode list / heading).
+#       (h.2) a heading line (begins with `#`) contains `EVALUATE_SYSTEM mode`
+#             (case-insensitive) — the mode subsection.
+#       (h.3) the mode is documented as a cross-sprint end-to-end regression: the
+#             anchors `cross-sprint`/`cross sprint` AND `end-to-end`/`end to end`
+#             AND `regression` (case-insensitive) are present.
+#       (h.4) back-compatible verdict reuse: the tokens `PASS` and `FAIL` and the
+#             `VERDICT:` line format are present (no new verdict token invented).
+#     bash + python3 stdlib only (NO import yaml), reusing parse_frontmatter.
+# ---------------------------------------------------------------------------
+if python3 - <<'PY'
+import glob, sys
+
+def parse_frontmatter(path):
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().split("\n")
+    if not lines or lines[0].strip() != "---":
+        return None
+    close = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            close = i
+            break
+    if close is None:
+        return None
+    fm = {}
+    for line in lines[1:close]:
+        if not line.strip() or line[0] in (" ", "\t") or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        fm[key.strip()] = val.strip()
+    return fm
+
+evaluators = []
+for path in sorted(glob.glob("install/agents/*.md")):
+    fm = parse_frontmatter(path)
+    if fm and fm.get("name") == "harness-evaluator":
+        evaluators.append(path)
+
+if not evaluators:
+    sys.stderr.write("  - no install/agents/*.md has 'name: harness-evaluator' (empty-match guard)\n")
+    sys.exit(1)
+
+errors = []
+for path in evaluators:
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    low = text.lower()
+
+    # (h.1) token present
+    if "EVALUATE_SYSTEM" not in text:
+        errors.append("%s: (h.1) missing literal token 'EVALUATE_SYSTEM'" % path)
+
+    # (h.2) mode subsection heading
+    heading_found = False
+    for line in text.split("\n"):
+        if line.lstrip().startswith("#") and "evaluate_system mode" in line.lower():
+            heading_found = True
+            break
+    if not heading_found:
+        errors.append("%s: (h.2) no heading line containing 'EVALUATE_SYSTEM mode'" % path)
+
+    # (h.3) cross-sprint / end-to-end / regression anchors
+    if not ("cross-sprint" in low or "cross sprint" in low):
+        errors.append("%s: (h.3) missing anchor 'cross-sprint' (or 'cross sprint')" % path)
+    if not ("end-to-end" in low or "end to end" in low):
+        errors.append("%s: (h.3) missing anchor 'end-to-end' (or 'end to end')" % path)
+    if "regression" not in low:
+        errors.append("%s: (h.3) missing anchor 'regression'" % path)
+
+    # (h.4) back-compatible verdict reuse — no new token invented
+    if "PASS" not in text or "FAIL" not in text:
+        errors.append("%s: (h.4) missing reused verdict tokens 'PASS'/'FAIL'" % path)
+    if "VERDICT:" not in text:
+        errors.append("%s: (h.4) missing 'VERDICT:' line format" % path)
+
+if errors:
+    for e in errors:
+        sys.stderr.write("  - %s\n" % e)
+    sys.exit(1)
+
+print("    (%d evaluator file(s) checked; EVALUATE_SYSTEM mode documented)" % len(evaluators))
+sys.exit(0)
+PY
+then
+    pass "(h) evaluator EVALUATE_SYSTEM mode documented (token + heading + cross-sprint/end-to-end/regression + PASS/FAIL)"
+else
+    fail "(h) evaluator EVALUATE_SYSTEM mode — missing token/heading/anchor (see above)"
 fi
 
 # ---------------------------------------------------------------------------

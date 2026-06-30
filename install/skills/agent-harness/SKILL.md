@@ -106,7 +106,8 @@ and the evaluator trace path.
 
 Read the FIRST line of `findings.md` yourself:
 - `VERDICT: PASS` → sprint NNN is done. Update STATUS.md. If `spec.md` has more sprints,
-  increment NNN and go to Step 2. Otherwise go to Step 6.
+  increment NNN and go to Step 2. Otherwise (the LAST sprint in `spec.md` has PASSed) go to
+  Step 6 — the Acceptance Gate.
 - `VERDICT: FAIL` → go to Step 5.
 
 ## Step 5 — Repair (spawn harness-generator)
@@ -114,12 +115,47 @@ Read the FIRST line of `findings.md` yourself:
 Spawn `harness-generator` in **REPAIR** mode with ONLY: workspace path, paths to read
 `spec.md`, `contract.md`, and `findings.md`, the project directory, and the generator trace
 path. Pass the control signal "findings are FAIL; fix only the listed findings". Then return
-to Step 4 (re-evaluate).
+to the phase that invoked this repair: a **per-sprint** repair (findings from Step 4) returns
+to **Step 4** (re-evaluate the sprint); a repair invoked from the **Acceptance Gate** (findings
+from Step 6) returns to **Step 6** (re-run the gate). Both paths are governed by the same
+evaluate↔repair cap below.
 
 Cap evaluate↔repair rounds per sprint at **4**. If still failing, stop and surface the latest
 `findings.md` plus any `prompt_patch.md` to the user. Do not mark a failing sprint as passed.
 
-## Step 6 — Report
+## Step 6 — Acceptance Gate (EVALUATE_SYSTEM)
+
+This is the **final phase** of the run. It runs ONCE the per-sprint loop is fully drained:
+**after** every per-sprint evaluate↔repair loop has reached `VERDICT: PASS` AND the **last
+sprint** in `spec.md` is done — and **before** the Report step. It is the whole-project
+acceptance gate: a cross-sprint, end-to-end regression over everything shipped, not a re-run of
+the latest sprint.
+
+**What you spawn.** ONE `harness-evaluator` in **`EVALUATE_SYSTEM`** mode, scoped to the whole
+project. (No new agent — this reuses the Evaluator with a different mode.)
+
+**Pointers-only spawn (THE ONE INVARIANT, B18).** The spawn prompt contains ONLY pointers and
+control signals — never another agent's prose:
+- the absolute workspace path,
+- the paths to READ: `spec.md` (all sprints), every `sprints/sprint_*/contract.md`, and the
+  project directory,
+- the path to WRITE the gate verdict: canonical `<.harness>/acceptance.md`,
+- the evaluator trace path.
+
+Include **ZERO prose authored by another agent** and zero conversation summary — paths and
+control signals only.
+
+**How you read the result.** Read only the **FIRST line** of the gate verdict file:
+- `VERDICT: PASS` → the run is accepted. Proceed to **Step 7 — Report**.
+- `VERDICT: FAIL` → route to **Step 5 (Repair)** to fix only the gate findings, then **return
+  to the Acceptance Gate (Step 6) — NOT Step 4** — and re-run the gate. This is governed by the
+  same evaluate↔repair cap. If the cap is hit while the gate is still `VERDICT: FAIL`, surface
+  the failing `acceptance.md` to the user and STOP — do **not** report success on a failing gate.
+
+**Model note (defer to Sprint 007):** the gate uses the Evaluator's default (strong) model;
+explicit per-spawn model tiering (B12) is Sprint 007 and is a NON-GOAL here.
+
+## Step 7 — Report
 
 When all sprints PASS (or a cap is hit), summarize to the user from what is **on disk**:
 - which sprints passed, with the evidence paths from `findings.md`,
@@ -133,7 +169,7 @@ Do not invent a pass. If the Evaluator wrote `VERDICT: FAIL` and you hit the cap
 ```
 [Agent tool, subagent_type: harness-<role>]
 
-MODE: <PLANNER | CONTRACT | BUILD | REPAIR | CONTRACT_REVIEW | EVALUATE>
+MODE: <PLANNER | CONTRACT | BUILD | REPAIR | CONTRACT_REVIEW | EVALUATE | EVALUATE_SYSTEM>
 WORKSPACE (absolute): /abs/.harness
 PROJECT DIR (absolute): /abs/project
 SPRINT: 001

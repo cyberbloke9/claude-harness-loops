@@ -1,0 +1,15 @@
+# Harness runtime / vector store (never ship)
+ruvector.db
+*.db
+
+# OS cruft
+.DS_Store
+
+# This harness's own bus/state directory — not part of the shipped product
+.harness/
+
+# Secrets — never commit on a public repo
+.env*
+
+# Build / upload artifacts
+uploads/

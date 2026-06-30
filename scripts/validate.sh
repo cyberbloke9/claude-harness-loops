@@ -48,6 +48,23 @@
 #                                 CONTRACT_REVIEW, only); (i.5) rubber-stamp risk +
 #                                 backstop documented (rubber-stamp, backstop). Check (c)
 #                                 is NOT modified; (i) owns the cross-file frontmatter glob.
+#   (j) Companion skills (Sprint 008, B13) — the two companion SKILL.md files under
+#                                 install/skills/ carry their full frontmatter + required body
+#                                 anchors. Starts from the HARD-CODED expected set
+#                                 {agent-harness-gate, agent-harness-resume} (NOT a glob — a
+#                                 deleted companion must FAIL, not pass vacuously). For each:
+#                                 (j.0) install/skills/<name>/SKILL.md exists; (j.1) frontmatter
+#                                 parses and carries non-empty name/description/argument-hint/
+#                                 allowed-tools; (j.2) frontmatter name == directory name;
+#                                 (j.3) allowed-tools contains the spawn token `Task`;
+#                                 (j.4) the BODY has >=1 Markdown heading (`^#{1,6} `);
+#                                 (j.5) gate BODY contains EVALUATE_SYSTEM + acceptance.md + Task;
+#                                 (j.6) resume BODY contains STATUS.md + re-enter (ci) + Task.
+#                                 Anchors are matched against the BODY ONLY (text after the
+#                                 closing frontmatter `---`), NOT the whole file — the same
+#                                 tokens also live in `description`/`allowed-tools`, so a
+#                                 whole-file grep would not bite when the body is stripped.
+#                                 python3-stdlib only (NO import yaml), reusing parse_frontmatter.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -788,6 +805,108 @@ PY
     else
         fail "(i) model selection per spawn — missing section/anchor/frontmatter-default (see above)"
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# (j) Companion skills (Sprint 008, B13) — the gate + resume companion SKILL.md
+#     files carry full frontmatter and required BODY anchors. Starts from a
+#     HARD-CODED expected set (NOT a glob-and-filter, which would pass vacuously
+#     when a companion is deleted — mirror line "empty glob = FAIL"): for each
+#     expected name the file MUST exist (j.0). Body anchors are checked against
+#     the BODY ONLY (after the closing `---`) — the same tokens also appear in
+#     `description`/`allowed-tools`, so a whole-file grep would not bite a body
+#     strip. python3-stdlib only (NO import yaml); reuses parse_frontmatter.
+# ---------------------------------------------------------------------------
+if python3 - <<'PY'
+import os, re, sys
+
+def parse_skill(path):
+    """Return (frontmatter_dict, body_str, error_or_None)."""
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return None, None, "missing opening '---' frontmatter line"
+    close = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            close = i
+            break
+    if close is None:
+        return None, None, "missing closing '---' frontmatter line"
+    fm = {}
+    for line in lines[1:close]:
+        if not line.strip() or line[0] in (" ", "\t") or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        fm[key.strip()] = val.strip()
+    body = "\n".join(lines[close + 1:])
+    return fm, body, None
+
+def tools_tokens(raw):
+    toks = []
+    for t in raw.split(","):
+        t = t.strip().strip("[]").strip()
+        if t:
+            toks.append(t)
+    return toks
+
+# Hard-coded EXPECTED set — the load-bearing non-vacuity guard. Each entry lists
+# the body anchors (anchor, case_insensitive) that MUST appear in that body.
+EXPECTED = {
+    "agent-harness-gate":   [("EVALUATE_SYSTEM", False), ("acceptance.md", False), ("Task", False)],
+    "agent-harness-resume": [("STATUS.md", False), ("re-enter", True), ("Task", False)],
+}
+REQUIRED_KEYS = ["name", "description", "argument-hint", "allowed-tools"]
+HEADING_RE = re.compile(r'^#{1,6} ', re.MULTILINE)
+
+errors = []
+for name, anchors in sorted(EXPECTED.items()):
+    path = "install/skills/%s/SKILL.md" % name
+    # (j.0) presence
+    if not os.path.isfile(path):
+        errors.append("(j.0) expected companion skill file is MISSING: %s" % path)
+        continue
+    fm, body, err = parse_skill(path)
+    if err:
+        errors.append("(j.1) %s: %s" % (path, err))
+        continue
+    # (j.1) frontmatter keys non-empty
+    for key in REQUIRED_KEYS:
+        if not fm.get(key):
+            errors.append("(j.1) %s: missing or empty required frontmatter key '%s'" % (path, key))
+    # (j.2) name matches directory
+    if fm.get("name") != name:
+        errors.append("(j.2) %s: frontmatter name '%s' != expected '%s'" % (path, fm.get("name"), name))
+    # (j.3) allowed-tools contains Task
+    if "Task" not in tools_tokens(fm.get("allowed-tools", "")):
+        errors.append("(j.3) %s: allowed-tools '%s' does not contain the spawn token 'Task'"
+                      % (path, fm.get("allowed-tools", "")))
+    # (j.4) >=1 markdown heading in the BODY
+    if not HEADING_RE.search(body or ""):
+        errors.append("(j.4) %s: body has no Markdown heading (expected >=1 line matching '^#{1,6} ')" % path)
+    # (j.5)/(j.6) body anchors — BODY ONLY (not frontmatter)
+    hay = body or ""
+    hay_low = hay.lower()
+    for anchor, ci in anchors:
+        found = (anchor.lower() in hay_low) if ci else (anchor in hay)
+        if not found:
+            errors.append("(j.5/j.6) %s: body is missing required anchor '%s'%s"
+                          % (path, anchor, " (case-insensitive)" if ci else ""))
+
+if errors:
+    for e in errors:
+        sys.stderr.write("  - %s\n" % e)
+    sys.exit(1)
+
+print("    (%d companion skill(s) checked: present, 4 frontmatter keys, name==dir, allowed-tools>=Task, body heading + anchors)"
+      % len(EXPECTED))
+sys.exit(0)
+PY
+then
+    pass "(j) companion skills (gate + resume: present, 4 frontmatter keys, name==dir, allowed-tools⊇Task, section heading, body anchors)"
+else
+    fail "(j) companion-skill contract — see above"
 fi
 
 # ---------------------------------------------------------------------------

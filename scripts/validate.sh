@@ -65,6 +65,30 @@
 #                                 tokens also live in `description`/`allowed-tools`, so a
 #                                 whole-file grep would not bite when the body is stripped.
 #                                 python3-stdlib only (NO import yaml), reusing parse_frontmatter.
+#   (k) patterns.md lineage (Sprint 009, B15) — docs/patterns.md maps each harness
+#                                 mechanism to its sourced public pattern WITH links.
+#                                 A NEW check letter (NOT a (c) sub-assertion; (c) globs
+#                                 no docs). Deterministic, NO network, NO install.sh run —
+#                                 link RESOLUTION is an Evaluator WebFetch step, not a CI
+#                                 step; (k) only asserts substring PRESENCE. Starts from
+#                                 the EXACT path (asserted, not globbed) so a delete/rename
+#                                 FAILs, not passes vacuously. grep -Eqi for headings/word
+#                                 anchors, grep -Fq (fixed-string) for the link substrings so
+#                                 `/`,`.`,`-` are literal:
+#                                 (k.0) docs/patterns.md exists (load-bearing guard);
+#                                 (k.1) >=1 title heading `^#{1,6} `;
+#                                 (k.2) five source anchors (Building Effective Agents,
+#                                       Agent SDK, 12-factor, subagent|sub-agent, superpowers);
+#                                 (k.3) named sub-patterns (orchestrator-worker,
+#                                       evaluator-optimizer, gather context, verify);
+#                                 (k.4) five link substrings (anthropic.com/engineering/
+#                                       building-effective-agents, agent-sdk, github.com/
+#                                       humanlayer/12-factor-agents, claude-code/sub-agents,
+#                                       github.com/obra/superpowers);
+#                                 (k.5) mechanism-mapping anchors (orchestrator, verdict,
+#                                       progressive disclosure, STATUS.md, Edit, disk|file-only).
+#                                 docs/ is outside check (a)'s globs, so (k) is isolated:
+#                                 it cannot affect (a)-(j) and they cannot mask it.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -907,6 +931,63 @@ then
     pass "(j) companion skills (gate + resume: present, 4 frontmatter keys, name==dir, allowed-tools⊇Task, section heading, body anchors)"
 else
     fail "(j) companion-skill contract — see above"
+fi
+
+# ---------------------------------------------------------------------------
+# (k) patterns.md lineage (Sprint 009, B15) — docs/patterns.md maps each harness
+#     mechanism to its sourced public pattern with links. Starts from the EXACT
+#     path (k.0) so a delete/rename FAILs, not passes vacuously. NO network: link
+#     RESOLUTION is the Evaluator's WebFetch job; (k) only checks substring
+#     PRESENCE. grep -Eqi for headings/word anchors; grep -Fq (fixed-string,
+#     case-sensitive) for link substrings so `/`,`.`,`-` are literal, not regex.
+#     (k) PASSes only if ALL of k.0-k.5 hold; each sub-assertion names its own
+#     specific missing item.
+# ---------------------------------------------------------------------------
+PATTERNS_DOC="docs/patterns.md"
+# (k.0) presence — the load-bearing guard.
+if [ ! -f "$PATTERNS_DOC" ]; then
+    fail "(k) patterns.md lineage — required file is MISSING: $PATTERNS_DOC (k.0)"
+else
+    k_ok=1
+    # (k.1) >=1 title heading.
+    if ! grep -Eq '^#{1,6} ' "$PATTERNS_DOC"; then
+        echo "  - $PATTERNS_DOC: (k.1) no Markdown title heading (expected >=1 line matching '^#{1,6} ')"
+        k_ok=0
+    fi
+    # (k.2) five source-pattern anchors (case-insensitive). subagent|sub-agent accepted.
+    for anchor in 'Building Effective Agents' 'Agent SDK' '12-factor' 'sub-?agent' 'superpowers'; do
+        if ! grep -Eqi "$anchor" "$PATTERNS_DOC"; then
+            echo "  - $PATTERNS_DOC: (k.2) missing source-pattern anchor '$anchor'"
+            k_ok=0
+        fi
+    done
+    # (k.3) named sub-patterns (case-insensitive). orchestrator-worker matches
+    #       orchestrator-workers; 'verify' paired with 'gather context' is non-vacuous.
+    for anchor in 'orchestrator-worker' 'evaluator-optimizer' 'gather context' 'verify'; do
+        if ! grep -Eqi "$anchor" "$PATTERNS_DOC"; then
+            echo "  - $PATTERNS_DOC: (k.3) missing named sub-pattern anchor '$anchor'"
+            k_ok=0
+        fi
+    done
+    # (k.4) five link substrings — fixed-string (grep -Fq), case-sensitive.
+    for link in 'anthropic.com/engineering/building-effective-agents' 'agent-sdk' 'github.com/humanlayer/12-factor-agents' 'claude-code/sub-agents' 'github.com/obra/superpowers'; do
+        if ! grep -Fq "$link" "$PATTERNS_DOC"; then
+            echo "  - $PATTERNS_DOC: (k.4) missing required source link substring '$link'"
+            k_ok=0
+        fi
+    done
+    # (k.5) harness-mechanism mapping anchors (case-insensitive). disk|file-only accepted.
+    for anchor in 'orchestrator' 'verdict' 'progressive disclosure' 'STATUS\.md' 'Edit' 'disk|file-only'; do
+        if ! grep -Eqi "$anchor" "$PATTERNS_DOC"; then
+            echo "  - $PATTERNS_DOC: (k.5) missing mechanism-mapping anchor '$anchor'"
+            k_ok=0
+        fi
+    done
+    if [ "$k_ok" -eq 1 ]; then
+        pass "(k) patterns.md lineage (present, title, 5 sources + links, sub-patterns, mechanism mapping)"
+    else
+        fail "(k) patterns.md lineage — see above"
+    fi
 fi
 
 # ---------------------------------------------------------------------------

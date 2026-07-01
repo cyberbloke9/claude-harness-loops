@@ -1,23 +1,51 @@
 # Claude Code Multi-Agent Harness
 
+[![CI](https://github.com/cyberbloke9/claude-harness-loops/actions/workflows/ci.yml/badge.svg)](https://github.com/cyberbloke9/claude-harness-loops/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A small, strict, file-only harness for Claude Code builds, packaged as a **global skill +
 three global agents** so it works in every session.
 
-The goal is not more process. The goal is fewer false passes.
+**Three isolated agents — Planner, Generator, Evaluator — coordinate only through disk.
+State is shared; conversation context never is.** One agent writes intent, another builds
+against a contract, a third adversarially attacks the result — and the one doing the work
+is never the one grading it. The goal is not more process. The goal is fewer false passes.
 
-## Install (global, all sessions)
+## Install from GitHub (one line)
+
+No clone needed — this fetches the repo into `~/.local/share/claude-harness-loops` and
+installs it into `~/.claude`:
 
 ```bash
-./install.sh            # copies the skill + agents into ~/.claude
+curl -fsSL https://raw.githubusercontent.com/cyberbloke9/claude-harness-loops/main/bootstrap.sh | bash
+```
+
+Re-run any time to update (it pulls latest, then re-installs). Uninstall:
+
+```bash
+~/.local/share/claude-harness-loops/install.sh --uninstall
+```
+
+> Piping to `bash` runs a script from the internet. It's short and does exactly what's
+> described above — read [`bootstrap.sh`](bootstrap.sh) first if you'd rather.
+
+## Install (from a clone)
+
+```bash
+git clone https://github.com/cyberbloke9/claude-harness-loops.git
+cd claude-harness-loops
+./install.sh            # copies the skills + agents into ~/.claude
 ./install.sh --uninstall
 ```
 
-This installs:
+Either path installs:
 
 - `~/.claude/skills/agent-harness/SKILL.md` — the orchestrator, invoked as `/agent-harness`
+- `~/.claude/skills/agent-harness-gate/SKILL.md` — `/agent-harness-gate <project>` (acceptance gate on demand)
+- `~/.claude/skills/agent-harness-resume/SKILL.md` — `/agent-harness-resume <project>` (resume an interrupted run)
 - `~/.claude/agents/harness-planner.md`, `harness-generator.md`, `harness-evaluator.md`
 
-Set `CLAUDE_CONFIG_DIR` to install somewhere other than `~/.claude`.
+Set `CLAUDE_CONFIG_DIR` to install somewhere other than `~/.claude`. Requires `git` and `bash`.
 
 ## Use
 

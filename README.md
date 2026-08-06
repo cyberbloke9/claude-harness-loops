@@ -156,6 +156,27 @@ without reading the skill.
   followed by `SCORE:` / `BLOCKERS:` / `HIGH:`. The orchestrator routes on the header / first line
   only and never parses the whole file.
 
+## Optional integrations (off by default)
+
+Two additive, opt-in integrations — neither changes the core loop or its guarantees. Full design in
+`docs/DESIGN-gywd-integration.md`.
+
+- **GYWD execution backend.** If you use the GYWD planning suite (`~/.claude/commands/gywd/`),
+  the bridge command **`/gywd:execute-plan-harness <PLAN.md>`** runs a GYWD `PLAN.md` through this
+  harness's Contract→Build→Attack→Gate loop instead of GYWD's self-certifying executor. GYWD keeps the
+  outer PM layer (roadmap→phase→plan, memory, drift); the harness supplies an isolated, no-Edit grader
+  that must sign `VERDICT: PASS` before the plan is marked done. One `PLAN.md` = one sprint. State split:
+  `.planning/STATE.md` = project position (GYWD); `.harness/STATUS.md` = in-flight sprint (harness).
+  `install.sh` installs this command only when GYWD's namespace is present.
+
+- **External-LLM review bridge.** `CONTRACT_REVIEW` is a pure disk-in/disk-out checklist, so it is the
+  one phase that can be served by a non-Claude model. With `HARNESS_EXTERNAL_REVIEW=1` and a provider
+  configured (`HARNESS_REVIEW_CMD`, or `HARNESS_REVIEW_ENDPOINT`+`HARNESS_REVIEW_MODEL`),
+  `scripts/external_review.sh` produces the same `contract_review.md`. **Fallback is mandatory:** any
+  failure exits non-zero and the orchestrator falls back to the proven `haiku` subagent. BUILD /
+  EVALUATE / the gate are never externalized. Validate keyless with the echo-stub:
+  `bash scripts/test_external_review.sh`.
+
 ## Non-Negotiables
 
 - If it is not written to disk, it does not exist.

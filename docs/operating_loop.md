@@ -16,6 +16,11 @@ The Evaluator reviews the contract before any code is written.
 
 The contract must pass before implementation starts.
 
+This contract-review step is the only phase that may be served by a non-Claude model: with
+`HARNESS_EXTERNAL_REVIEW=1` and a provider configured, `scripts/external_review.sh` writes the same
+`contract_review.md`, falling back to the `haiku` subagent on any failure. See
+`docs/DESIGN-gywd-integration.md` §6.
+
 ## Phase 3: Generation
 
 The Generator implements only the accepted sprint contract.

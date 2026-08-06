@@ -83,6 +83,21 @@ pointer + control signal, never the review's text.)
 path, path to read `contract.md` and `spec.md`, path to write `contract_review.md`, and the
 evaluator trace path.
 
+> **Optional external-review bridge (OFF by default).** CONTRACT_REVIEW is a pure disk-in /
+> disk-out checklist, so it is the ONE phase that can be served by a non-Claude model. If the
+> env var `HARNESS_EXTERNAL_REVIEW=1` **and** `scripts/external_review.sh` + a provider
+> (`HARNESS_REVIEW_CMD`, or `HARNESS_REVIEW_ENDPOINT`+`HARNESS_REVIEW_MODEL`) are configured,
+> run `bash ~/.claude/skills/agent-harness/scripts/external_review.sh <contract.md> <spec.md>
+> <contract_review.md>` INSTEAD of the haiku subagent for this one spawn (that absolute path is
+> where `install.sh` places the bridge; adjust if `CLAUDE_CONFIG_DIR` is set). The bridge is
+> invoked from the user's project cwd, so a bare relative path would NOT resolve — always use the
+> installed absolute path. The bridge writes the same `contract_review.md` with a
+> `VERDICT:` first line. **Fallback is mandatory:** if the bridge exits non-zero (exit 2 =
+> provider failed / no usable verdict), fall back to the haiku subagent above. Never externalize
+> `BUILD`, `EVALUATE`, or the Acceptance Gate — they need tools + agency and stay on Claude. This
+> is safe precisely because strong-opus EVALUATE + the gate re-attack anything a cheap external
+> reviewer lets through. See `docs/DESIGN-gywd-integration.md` §6.
+
 **2c. Read the verdict yourself.** Read the FIRST line of `contract_review.md`:
 - `VERDICT: ACCEPT` → proceed to Step 3.
 - `VERDICT: REJECT` → go back to 2a (re-spawn generator with the pointer + REJECTED signal).

@@ -1161,6 +1161,53 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# (n) GYWD × harness bridge surface — the DESIGN-gywd-integration.md deliverables exist,
+#     parse, and self-verify. Hermetic: runs the external-review test suite with the local
+#     echo-stub (no network, no key). Covers: bridge command frontmatter, SKILL.md external
+#     hook + mandatory fallback, external_review.sh syntax, and the keyless test suite green.
+# ---------------------------------------------------------------------------
+n_ok=1
+BRIDGE_CMD="install/commands/gywd/execute-plan-harness.md"
+if [ -f "$BRIDGE_CMD" ]; then
+    # frontmatter name + Task tool (needed to spawn harness agents)
+    grep -Eq '^name:[[:space:]]*GYWD:execute-plan-harness' "$BRIDGE_CMD" || { echo "  (n) bridge command missing name"; n_ok=0; }
+    grep -Eq '^[[:space:]]*-[[:space:]]*Task[[:space:]]*$' "$BRIDGE_CMD" || { echo "  (n) bridge command allowed-tools must include Task"; n_ok=0; }
+    grep -Eqi 'STATE\.md.*position|position.*STATE\.md' "$BRIDGE_CMD" || { echo "  (n) bridge command must document the STATE.md=position / STATUS.md=in-flight split"; n_ok=0; }
+else
+    echo "  (n) missing $BRIDGE_CMD"; n_ok=0
+fi
+# SKILL.md external-review hook + mandatory fallback wording
+if ! grep -q 'HARNESS_EXTERNAL_REVIEW' install/skills/agent-harness/SKILL.md; then
+    echo "  (n) SKILL.md missing the HARNESS_EXTERNAL_REVIEW hook"; n_ok=0
+fi
+if ! grep -Eqi 'fallback' install/skills/agent-harness/SKILL.md; then
+    echo "  (n) SKILL.md external-review hook must state the mandatory fallback"; n_ok=0
+fi
+# Reachability: the hook must use the INSTALLED absolute path (cwd is the user's project, so a
+# bare 'scripts/...' relative path would not resolve), AND install.sh must actually copy the
+# scripts next to the skill. Guards the blocker where the feature installs but can't be invoked.
+if ! grep -Eq 'skills/agent-harness/scripts/external_review\.sh' install/skills/agent-harness/SKILL.md; then
+    echo "  (n) SKILL.md hook must reference the installed absolute scripts path, not a bare relative one"; n_ok=0
+fi
+if ! grep -Eq 'SKILL_DST/scripts|REVIEW_SCRIPTS' install.sh; then
+    echo "  (n) install.sh must copy the external-review scripts next to the skill"; n_ok=0
+fi
+# external_review.sh + stub + test suite present, syntactically valid, and GREEN (keyless)
+for s in scripts/external_review.sh scripts/echo_review_stub.sh scripts/test_external_review.sh; do
+    [ -f "$s" ] || { echo "  (n) missing $s"; n_ok=0; }
+    bash -n "$s" 2>/dev/null || { echo "  (n) $s failed bash -n"; n_ok=0; }
+done
+if [ "$n_ok" -eq 1 ]; then
+    if bash scripts/test_external_review.sh >/dev/null 2>&1; then
+        pass "(n) GYWD bridge + external-review surface present, parses, and passes the keyless test suite"
+    else
+        fail "(n) external-review test suite failed (run: bash scripts/test_external_review.sh)"
+    fi
+else
+    fail "(n) GYWD bridge / external-review surface — see notes above"
+fi
+
+# ---------------------------------------------------------------------------
 echo "---"
 if [ "$FAIL" -ne 0 ]; then
     echo "VALIDATE: FAIL"

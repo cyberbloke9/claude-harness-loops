@@ -162,12 +162,15 @@ Two additive, opt-in integrations — neither changes the core loop or its guara
 `docs/DESIGN-gywd-integration.md`.
 
 - **GYWD execution backend.** If you use the GYWD planning suite (`~/.claude/commands/gywd/`),
-  the bridge command **`/gywd:execute-plan-harness <PLAN.md>`** runs a GYWD `PLAN.md` through this
-  harness's Contract→Build→Attack→Gate loop instead of GYWD's self-certifying executor. GYWD keeps the
-  outer PM layer (roadmap→phase→plan, memory, drift); the harness supplies an isolated, no-Edit grader
-  that must sign `VERDICT: PASS` before the plan is marked done. One `PLAN.md` = one sprint. State split:
-  `.planning/STATE.md` = project position (GYWD); `.harness/STATUS.md` = in-flight sprint (harness).
-  `install.sh` installs this command only when GYWD's namespace is present.
+  the bridge command **`/gywd:execute-plan-harness <milestone|phase>`** runs a GYWD ROADMAP
+  milestone through this harness's loop instead of GYWD's self-certifying executor. The harness
+  **Planner** turns the milestone's phases + its `Requirements:` doc into a `spec.md` with **one
+  sprint per ROADMAP phase (1:1)**, then Contract→Build→Attack→Gate runs per sprint; each PASS ticks
+  the ROADMAP checkbox and writes a SUMMARY. GYWD keeps the outer PM layer (roadmap, requirements,
+  memory, drift); the harness supplies the isolated, no-Edit grader that must sign `VERDICT: PASS`.
+  State split: `.planning/STATE.md` + ROADMAP checkboxes = project position (GYWD);
+  `.harness/STATUS.md` = in-flight sprint (harness). `install.sh` installs this command only when
+  GYWD's namespace is present.
 
 - **External-LLM review bridge.** `CONTRACT_REVIEW` is a pure disk-in/disk-out checklist, so it is the
   one phase that can be served by a non-Claude model. With `HARNESS_EXTERNAL_REVIEW=1` and a provider

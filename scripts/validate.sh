@@ -1173,6 +1173,12 @@ if [ -f "$BRIDGE_CMD" ]; then
     grep -Eq '^name:[[:space:]]*GYWD:execute-plan-harness' "$BRIDGE_CMD" || { echo "  (n) bridge command missing name"; n_ok=0; }
     grep -Eq '^[[:space:]]*-[[:space:]]*Task[[:space:]]*$' "$BRIDGE_CMD" || { echo "  (n) bridge command allowed-tools must include Task"; n_ok=0; }
     grep -Eqi 'STATE\.md.*position|position.*STATE\.md' "$BRIDGE_CMD" || { echo "  (n) bridge command must document the STATE.md=position / STATUS.md=in-flight split"; n_ok=0; }
+    # Corrected seam (2026-10-15): milestone/ROADMAP input, phases 1:1 sprints, and USE the Planner.
+    grep -Eqi 'ROADMAP' "$BRIDGE_CMD"                 || { echo "  (n) bridge command must read the GYWD ROADMAP milestone (corrected seam), not a PLAN.md unit"; n_ok=0; }
+    grep -Eqi 'milestone' "$BRIDGE_CMD"               || { echo "  (n) bridge command must operate at the milestone level"; n_ok=0; }
+    grep -Eqi '1:1|one sprint per' "$BRIDGE_CMD"      || { echo "  (n) bridge command must map each ROADMAP phase 1:1 to a sprint"; n_ok=0; }
+    grep -Eq  'harness-planner' "$BRIDGE_CMD"         || { echo "  (n) bridge command must spawn harness-planner to build the spec"; n_ok=0; }
+    grep -Eqi 'skip[a-z]* the harness planner|deliberately skips the (harness )?planner' "$BRIDGE_CMD" && { echo "  (n) bridge command must NOT skip the Planner (old broken seam)"; n_ok=0; }
 else
     echo "  (n) missing $BRIDGE_CMD"; n_ok=0
 fi

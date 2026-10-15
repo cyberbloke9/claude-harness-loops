@@ -1,12 +1,36 @@
 # DESIGN — GYWD × Agent-Harness integration + external-LLM review bridge
 
-Status: **APPROVED — implemented and statically verified** (bridge command, external-review
-bridge, installer wiring, CI check (n) all green). The GYWD bridge command has NOT yet been run
-end-to-end against a live `PLAN.md` — that is the outstanding Phase 1 DoD (§7).
-Author: harness maintainer. Date: 2026-07-06.
+Status: **APPROVED — implemented; seam CORRECTED 2026-10-15 (see below); offline-validated against
+the live pocket-decision-book v3.0 run.**
+Author: harness maintainer. Dates: designed 2026-07-06, seam corrected 2026-10-15.
 Decisions locked by user: standalone command (not a flag); STATE.md=position / STATUS.md=in-flight;
 external review = echo-stub / local-only for now; source tracked in the public harness repo, command
 installed locally into GYWD's namespace like GYWD itself.
+
+## CORRECTION (2026-10-15) — the real seam is the ROADMAP milestone, not `PLAN.md`
+
+The original design (§2–§5 below, kept for history) assumed the seam was GYWD `plan-phase` output —
+a per-phase `PLAN.md` → one sprint. **Evidence from the user's real runs disproves that.** On
+`pocket-decision-book` (built GYWD→harness, 6+ sprints passed):
+- `.planning/phases/` is **empty** — zero `PLAN.md`, zero `SUMMARY.md`. `plan-phase` was never used.
+- The ROADMAP milestone block literally reads: *"Requirements: .planning/V3.md. Phases map 1:1 to
+  harness sprints,"* and lists Phases 11–15.
+- `.harness/spec.md` was *"Written by the Planner … Sprints 001–005 map to ROADMAP.md Milestone v3.0
+  Phases 11–15"* — one milestone spec, phases 1:1 sprints, run through the standard harness loop.
+
+So the real seam is **`ROADMAP.md` milestone (phase range) + the `V*.md` it names →
+`harness-planner` → `spec.md` (phases 1:1 sprints) → standard per-sprint loop + Acceptance Gate.**
+The original bridge was wrong twice: it read the wrong artifact (`PLAN.md`) and **skipped the
+Planner**. The corrected command (`install/commands/gywd/execute-plan-harness.md`) reads the ROADMAP
+milestone + requirements, **uses the Planner**, maps each ROADMAP phase to one sprint, and reconciles
+back by ticking ROADMAP checkboxes + STATE.md per sprint PASS. `PLAN.md`, if present for a phase, is
+optional extra detail — never the unit of work. Where §2–§5 say "PLAN.md", read "ROADMAP milestone +
+requirements doc, via the Planner."
+
+**Offline validation:** feeding ROADMAP Phases 11–15 + `V3.md` through the corrected command's
+process reproduces the v3.0 decomposition (5 todo phases → Sprints 001–005, in order, each carrying
+its `Verify:` criteria) — matching the hand-run `spec.md`/`STATUS.md` that already PASSED. No build
+run, no project risk. See `scripts/validate_seam_offline.sh` notes in the commit.
 
 This doc is grounded in the *actual* current behavior of both systems (files read, not assumed):
 - GYWD commands: `~/.claude/commands/gywd/{plan-phase,execute-plan,challenge,verify-work,discuss-phase}.md`

@@ -62,11 +62,13 @@ run end to end. (A single-phase target is just the N=1 case.)
 - The target milestone (or phase) resolves to a concrete set of ROADMAP phases.
 - The harness agents are installed — the `Task` tool can spawn `harness-planner`,
   `harness-generator`, `harness-evaluator`. If not, tell the user to run the harness `install.sh`.
-- **Resume guard (check this FIRST, before any bus setup).** If `<project>/.harness/STATUS.md`
-  exists and shows an in-flight run of THIS milestone (any sprint without a terminal verdict, or a
-  phase in `building`/`evaluating`), DO NOT start a new run — hand off to
-  `/agent-harness-resume <project>` instead. Starting fresh here would rebuild already-passed work
-  and clobber the live bus. Only proceed past this step for a genuinely new milestone or a clean prior one.
+- **Resume guard (check this FIRST, before reading or writing anything in the bus).** If
+  `<project>/.harness/STATUS.md` exists and shows an **in-flight run of ANY milestone** (any sprint
+  without a terminal verdict, or a phase in `building`/`evaluating`), DO NOT start a new run — STOP
+  and hand off to `/agent-harness-resume <project>`. This holds whether or not it is the same
+  milestone you were asked to run: an in-flight bus from a *different* milestone must not be read
+  for done-detection (Step 2) or overwritten (Step 4). Only a bus whose every sprint reached a
+  terminal verdict (all PASS, or a surfaced FAIL) counts as "not in-flight" and lets you proceed.
 
 **2. Resolve the milestone and its inputs (YOU do this in the main context).**
 - From `ROADMAP.md`, extract the target milestone's **phase list** (each `- [ ] **Phase N — …**`
@@ -75,18 +77,24 @@ run end to end. (A single-phase target is just the N=1 case.)
   inline `Verify:`.
 - Determine which phases are already **done** vs **todo**. A phase counts as done if its ROADMAP
   box is `- [x]` **OR** its sprint's `.harness/sprints/sprint_00k/findings.md` first line is
-  `VERDICT: PASS` (ROADMAP checkboxes are sometimes left unticked during a manual run — the verdict
-  on disk is the source of truth, per "if it is not written to disk it does not exist"). Only todo
-  phases become sprints to run; done phases are context, not work. If every target phase is already
-  done, there is nothing to build — report that and stop.
+  `VERDICT: PASS`. The findings-on-disk clause (ROADMAP checkboxes are sometimes left unticked
+  during a manual run) is **only trustworthy when the existing `.harness/spec.md` belongs to THIS
+  milestone** — confirm that first (its title/phases match the target milestone). Sprint numbers
+  restart at 001 per milestone, so a leftover bus from a *different* milestone would make this
+  milestone's early phases look falsely done; if the bus is not this milestone's, ignore its
+  findings and treat the checkbox as the only signal. Only todo phases become sprints to run; done
+  phases are context, not work. If every target phase is genuinely done, there is nothing to build
+  — report that and stop.
 
 **3. Set up the harness bus.**
 - Project dir = the repo root where `.planning/` lives. Create `<project>/.harness/` (+ `sprints/`,
   `logs/`, `patches/`) if absent.
-- If a `.harness/` from a *prior, completed* milestone exists (its sprints all PASSED — the resume
-  guard in Step 1 already ruled out an in-flight one), preserving its contents is a **destructive,
-  confirm-first action**: show the user what you would move (e.g. rename to `.harness-<prevver>/`)
-  and wait for approval before touching it. Never silently overwrite a bus.
+- If a `.harness/` from a *prior, completed* milestone exists (its sprints all reached a terminal
+  verdict — Step 1's guard already stopped on any in-flight bus, of any milestone), preserving its
+  contents is a **destructive, confirm-first action**: show the user what you would move (e.g.
+  rename to `.harness-<prevver>/`) and wait for approval before touching it. If the user **declines
+  the move, STOP** — do not overwrite the bus, do not proceed; surface that the project already has
+  a `.harness/` and let them decide. Never silently overwrite a bus.
 
 **4. Plan → `spec.md` via the harness Planner (DO NOT hand-translate; DO NOT skip the Planner).**
 Spawn `harness-planner` (model: `opus`) with ONLY pointers: the project dir; the paths to read —

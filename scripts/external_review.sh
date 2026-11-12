@@ -42,6 +42,9 @@ die_fallback() { echo "external_review: $*" >&2; exit 2; }
 CONTRACT="$1"; SPEC="$2"; OUT="$3"
 [ -f "$CONTRACT" ] || { echo "external_review: contract not found: $CONTRACT" >&2; exit 1; }
 [ -f "$SPEC" ]     || { echo "external_review: spec not found: $SPEC" >&2; exit 1; }
+# Clear any stale output up front: a fallback exit (exit 2) must never leave an old/bogus verdict
+# file behind for the orchestrator to misread. On success we rewrite it; on fallback it stays gone.
+rm -f "$OUT" 2>/dev/null || true
 
 # --- Build the CONTRACT_REVIEW prompt (same mechanical bar the Evaluator applies) ---
 PROMPT="$(cat <<EOF
@@ -84,10 +87,19 @@ print(json.dumps({
   "messages": [{"role":"user","content": os.environ["HARNESS_PROMPT"]}],
   "temperature": 0
 }))')" || die_fallback "failed to build request body"
-  RESP="$(curl -fsS "$HARNESS_REVIEW_ENDPOINT" \
-      -H "Content-Type: application/json" \
-      ${HARNESS_REVIEW_KEY:+-H "Authorization: Bearer $HARNESS_REVIEW_KEY"} \
-      -d "$BODY" 2>/dev/null)" || die_fallback "provider HTTP call failed"
+  # Keep the API key and the (potentially large) request body OFF the process argv: the key goes
+  # through a curl -K config on a process-substitution fd (not visible via `ps`/cmdline), and the
+  # body goes in on stdin (avoids ARG_MAX on a big spec). Needs bash — the shebang guarantees it.
+  if [ -n "${HARNESS_REVIEW_KEY:-}" ]; then
+    RESP="$(printf '%s' "$BODY" | curl -fsS "$HARNESS_REVIEW_ENDPOINT" \
+        -H "Content-Type: application/json" \
+        -K <(printf 'header = "Authorization: Bearer %s"\n' "$HARNESS_REVIEW_KEY") \
+        --data-binary @- 2>/dev/null)" || die_fallback "provider HTTP call failed"
+  else
+    RESP="$(printf '%s' "$BODY" | curl -fsS "$HARNESS_REVIEW_ENDPOINT" \
+        -H "Content-Type: application/json" \
+        --data-binary @- 2>/dev/null)" || die_fallback "provider HTTP call failed"
+  fi
   RAW="$(printf '%s' "$RESP" | python3 -c 'import sys,json
 try:
     d=json.load(sys.stdin); print(d["choices"][0]["message"]["content"])
@@ -99,10 +111,18 @@ fi
 
 [ -n "${RAW//[[:space:]]/}" ] || die_fallback "provider returned empty output"
 
-# --- Enforce the disk contract: line 1 must be a valid VERDICT token ---
-# Find the first VERDICT: ACCEPT|REJECT line anywhere in the output, normalize it to line 1.
-VERDICT_LINE="$(printf '%s\n' "$RAW" | grep -m1 -E '^[[:space:]]*VERDICT:[[:space:]]*(ACCEPT|REJECT)[[:space:]]*$' || true)"
-[ -n "$VERDICT_LINE" ] || die_fallback "no 'VERDICT: ACCEPT|REJECT' line in provider output"
+# --- Enforce the disk contract: the FIRST non-blank line must be a valid VERDICT token ---
+# Guard against prompt-echo / ambiguity: if BOTH ACCEPT and REJECT verdict lines appear anywhere
+# (e.g. a model that echoes this script's own prompt, which contains both), the output is
+# untrustworthy — fall back rather than pick the first (which would silently fail OPEN to ACCEPT).
+if printf '%s\n' "$RAW" | grep -qE '^[[:space:]]*VERDICT:[[:space:]]*ACCEPT[[:space:]]*$' \
+   && printf '%s\n' "$RAW" | grep -qE '^[[:space:]]*VERDICT:[[:space:]]*REJECT[[:space:]]*$'; then
+  die_fallback "ambiguous output: both ACCEPT and REJECT verdict lines present (prompt echo?)"
+fi
+# The verdict must BE the first non-blank line, not merely appear somewhere in the prose.
+FIRST_NONBLANK="$(printf '%s\n' "$RAW" | sed -e '/^[[:space:]]*$/d' | head -n1)"
+VERDICT_LINE="$(printf '%s\n' "$FIRST_NONBLANK" | grep -E '^[[:space:]]*VERDICT:[[:space:]]*(ACCEPT|REJECT)[[:space:]]*$' || true)"
+[ -n "$VERDICT_LINE" ] || die_fallback "first non-blank line is not 'VERDICT: ACCEPT|REJECT'"
 # Canonicalize (strip surrounding whitespace, collapse to `VERDICT: TOKEN`).
 TOKEN="$(printf '%s' "$VERDICT_LINE" | sed -E 's/^[[:space:]]*VERDICT:[[:space:]]*//; s/[[:space:]]*$//')"
 

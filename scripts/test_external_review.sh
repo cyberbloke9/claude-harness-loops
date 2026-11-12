@@ -61,8 +61,37 @@ env -u HARNESS_REVIEW_CMD -u HARNESS_REVIEW_ENDPOINT -u HARNESS_REVIEW_MODEL \
 [ "$?" -eq 1 ] && ok "no provider -> exit 1" || no "no-provider did not exit 1"
 
 # 7. Missing input file -> exit 1.
-env HARNESS_REVIEW_CMD="$STUB" bash "$BRIDGE" "$TMP/nope.md" "$SPEC" "$OUT" 2>/dev/null
+env HARNESS_REVIEW_CMD="$TMP/nope.md" bash "$BRIDGE" "$TMP/nope.md" "$SPEC" "$OUT" 2>/dev/null
 [ "$?" -eq 1 ] && ok "missing contract -> exit 1" || no "missing input did not exit 1"
+
+# 8. FAIL-OPEN guard (review finding 1): a provider that ECHOES the prompt (which itself contains
+#    both 'VERDICT: ACCEPT' and 'VERDICT: REJECT' lines) must NOT yield a bogus ACCEPT. `cat` echoes
+#    stdin -> both tokens present -> must exit 2, no out.md.
+rm -f "$OUT"
+HARNESS_REVIEW_CMD="cat" bash "$BRIDGE" "$CONTRACT" "$SPEC" "$OUT" 2>/dev/null
+rc=$?
+{ [ "$rc" -eq 2 ] && [ ! -f "$OUT" ]; } && ok "prompt-echo (both tokens) -> exit 2, no out.md (no fail-open)" \
+                                        || no "fail-open guard: rc=$rc, out exists=$([ -f "$OUT" ] && echo yes || echo no)"
+
+# 9. VERDICT must be the FIRST non-blank line, not merely present in prose.
+rm -f "$OUT"
+HARNESS_REVIEW_CMD="printf 'Here is my review.\nVERDICT: ACCEPT\n'" bash "$BRIDGE" "$CONTRACT" "$SPEC" "$OUT" 2>/dev/null
+rc=$?
+{ [ "$rc" -eq 2 ] && [ ! -f "$OUT" ]; } && ok "verdict not on first non-blank line -> exit 2 (no out.md)" \
+                                        || no "first-line enforcement: rc=$rc, out exists=$([ -f "$OUT" ] && echo yes || echo no)"
+
+# 10. STALE OUTPUT cleared on fallback (review finding 4): a pre-existing bad verdict must be gone
+#     after a fallback exit, not left for the orchestrator to misread.
+printf 'VERDICT: ACCEPT\nstale\n' > "$OUT"
+STUB_BROKEN=1 HARNESS_REVIEW_CMD="$STUB" bash "$BRIDGE" "$CONTRACT" "$SPEC" "$OUT" 2>/dev/null
+rc=$?
+{ [ "$rc" -eq 2 ] && [ ! -f "$OUT" ]; } && ok "stale out.md removed on fallback (exit 2, file gone)" \
+                                        || no "stale-output: rc=$rc, out exists=$([ -f "$OUT" ] && echo yes || echo no)"
+
+# 11. NO-LEAK guard (review finding 6): a sentinel key in the env must never appear in out.md.
+rm -f "$OUT"
+HARNESS_REVIEW_KEY="SENTINEL_KEY_abc123" HARNESS_REVIEW_CMD="$STUB" bash "$BRIDGE" "$CONTRACT" "$SPEC" "$OUT" 2>/dev/null
+if [ -f "$OUT" ] && grep -q 'SENTINEL_KEY_abc123' "$OUT"; then no "API key leaked into out.md"; else ok "API key never written to out.md"; fi
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
